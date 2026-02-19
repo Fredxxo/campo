@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Plus, Circle, History, X, Calendar, ArrowRight, Clock, Trash2, AlertTriangle } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 
 const Circulos = () => {
-    // Definición inicial de círculos
+    // Definición inicial de círculos (nombres y valores por defecto)
     const initialCirculosList = [
         { name: "17 sur", hectares: 49 },
         { name: "17 norte", hectares: 49 },
@@ -33,39 +35,34 @@ const Circulos = () => {
     ];
 
     const [circulosList, setCirculosList] = useState(initialCirculosList);
-
-    // Estado principal para guardar la historia de actividades
-    // Estructura: { [nombreCirculo]: [{ id, activity, situation, alert, startDate, endDate }] }
-    // situation: 'Iniciado', 'En Proceso', 'Finalizado'
-    // alert: '', 'Listo para cortar', 'Cortar urgente', 'Pasado'
     const [history, setHistory] = useState({});
-
-    // Estado para controlar qué círculo se está inspeccionando (historial)
     const [selectedCircle, setSelectedCircle] = useState(null);
 
-    // Inicializar el estado de historia si está vacío
+    // Suscribirse a cambios en la colección 'circles' de Firestore
     useEffect(() => {
-        setHistory(prev => {
-            const newHistory = { ...prev };
-            let hasChanges = false;
+        const unsubscribe = onSnapshot(collection(db, "circles"), (snapshot) => {
+            const historyData = {};
+            const hectaresData = {};
 
-            circulosList.forEach(c => {
-                if (!newHistory[c.name] || newHistory[c.name].length === 0) {
-                    newHistory[c.name] = [{
-                        id: Date.now() + Math.random(), // Simple unique ID
-                        activity: '',
-                        situation: 'Iniciado',
-                        alert: '',
-                        startDate: new Date().toISOString(),
-                        endDate: null
-                    }];
-                    hasChanges = true;
-                }
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (data.history) historyData[doc.id] = data.history;
+                if (data.hectares !== undefined) hectaresData[doc.id] = data.hectares;
             });
 
-            return hasChanges ? newHistory : prev;
+            setHistory(historyData);
+
+            // Actualizar hectáreas en la lista de círculos
+            setCirculosList(prevList => prevList.map(c => ({
+                ...c,
+                hectares: hectaresData[c.name] !== undefined ? hectaresData[c.name] : c.hectares
+            })));
+        }, (error) => {
+            console.error("Error fetching circles:", error);
         });
-    }, [circulosList]);
+
+        return () => unsubscribe();
+    }, []);
 
     const getCurrentState = (circuloName) => {
         const circleHistory = history[circuloName];
@@ -73,84 +70,93 @@ const Circulos = () => {
         return circleHistory[circleHistory.length - 1];
     };
 
+    const updateCircleData = async (circleName, dataToUpdate) => {
+        try {
+            await setDoc(doc(db, "circles", circleName), dataToUpdate, { merge: true });
+        } catch (error) {
+            console.error("Error updating circle data:", error);
+        }
+    };
+
     const handleHectaresChange = (index, newValue) => {
+        // Actualización optimista
         const updatedList = [...circulosList];
         updatedList[index].hectares = newValue;
         setCirculosList(updatedList);
+
+        // Guardar en Firestore
+        updateCircleData(updatedList[index].name, { hectares: newValue });
     };
 
-    // Helper to close current record and start new one
-    const createNewHistoryEntry = (prevHistory, circuloName, changes) => {
-        const currentHistory = prevHistory[circuloName] ? [...prevHistory[circuloName]] : [];
-        const now = new Date().toISOString();
-
-        if (currentHistory.length === 0) return prevHistory;
-
-        const lastIndex = currentHistory.length - 1;
-        const currentItem = currentHistory[lastIndex];
-
-        // Close current
-        if (!currentItem.endDate) {
-            currentHistory[lastIndex] = {
-                ...currentItem,
-                endDate: now
-            };
+    // Helper to calculate new history array
+    const calculateNewHistory = (currentHistory = [], changes) => {
+        // Asegurar que haya un estado inicial si está vacío
+        if (currentHistory.length === 0) {
+            currentHistory = [{
+                id: Date.now() + Math.random(),
+                activity: '',
+                situation: 'Iniciado',
+                alert: '',
+                startDate: new Date().toISOString(),
+                endDate: null
+            }];
         }
 
-        // Create new with changes applied to current state
-        currentHistory.push({
+        const list = [...currentHistory];
+        const lastIndex = list.length - 1;
+        const currentItem = list[lastIndex];
+        const now = new Date().toISOString();
+
+        // Close current if needed (logic: if we are changing activity, usually we close previous?
+        // Or if we specifically want to log a new entry.
+        // The previous logic for createNewHistoryEntry seemed to close 'if !currentItem.endDate'
+        // But simply updating 'situation' or 'alert' usually might not close the activity itself?
+        // Let's stick to the previous CreateNewHistoryEntry logic which ALWAYS created a new entry
+        // for any change, closing the previous one. This creates a granular audit log.
+
+        if (!currentItem.endDate) {
+            list[lastIndex] = { ...currentItem, endDate: now };
+        }
+
+        list.push({
             id: Date.now(),
             activity: changes.activity !== undefined ? changes.activity : currentItem.activity,
             situation: changes.situation !== undefined ? changes.situation : currentItem.situation,
-            alert: changes.alert !== undefined ? changes.alert : currentItem.alert, // Preserve or update alert
+            alert: changes.alert !== undefined ? changes.alert : currentItem.alert,
             startDate: now,
             endDate: null
         });
 
-        return {
-            ...prevHistory,
-            [circuloName]: currentHistory
-        };
+        return list;
     };
 
     const handleActivityChange = (circuloName, newActivity) => {
-        setHistory(prev => createNewHistoryEntry(prev, circuloName, {
+        const currentHistory = history[circuloName] || [];
+        const newHistory = calculateNewHistory(currentHistory, {
             activity: newActivity,
-            situation: 'Iniciado', // Reset situation on new activity? Or keep? usually reset to start.
-            alert: '' // Reset alert on new activity? usually safe to assume.
-        }));
+            situation: 'Iniciado',
+            alert: ''
+        });
+        updateCircleData(circuloName, { history: newHistory });
     };
 
     const handleSituationChange = (circuloName, newSituation) => {
-        setHistory(prev => createNewHistoryEntry(prev, circuloName, { situation: newSituation }));
+        const currentHistory = history[circuloName] || [];
+        const newHistory = calculateNewHistory(currentHistory, { situation: newSituation });
+        updateCircleData(circuloName, { history: newHistory });
     };
 
     const handleAlertChange = (circuloName, newAlert) => {
-        setHistory(prev => createNewHistoryEntry(prev, circuloName, { alert: newAlert }));
+        const currentHistory = history[circuloName] || [];
+        const newHistory = calculateNewHistory(currentHistory, { alert: newAlert });
+        updateCircleData(circuloName, { history: newHistory });
     };
 
     // Eliminar un item del historial
     const deleteHistoryItem = (circuloName, itemId) => {
-        setHistory(prev => {
-            const currentHistory = prev[circuloName] ? [...prev[circuloName]] : [];
-            const updatedHistory = currentHistory.filter(item => item.id !== itemId);
-
-            if (updatedHistory.length === 0) {
-                updatedHistory.push({
-                    id: Date.now(),
-                    activity: '',
-                    situation: 'Iniciado',
-                    alert: '',
-                    startDate: new Date().toISOString(),
-                    endDate: null
-                });
-            }
-
-            return {
-                ...prev,
-                [circuloName]: updatedHistory
-            };
-        });
+        const currentHistory = history[circuloName] || [];
+        const updatedHistory = currentHistory.filter(item => item.id !== itemId);
+        updateCircleData(circuloName, { history: updatedHistory });
     };
 
     const formatDate = (isoString) => {
