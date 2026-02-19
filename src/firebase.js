@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, initializeFirestore, memoryLocalCache } from "firebase/firestore";
+import { getFirestore, initializeFirestore, persistentLocalCache } from "firebase/firestore";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,12 +13,14 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-// Force memory cache to avoid IndexedDB errors in this browser environment
+
+// Initialize Auth
+const auth = getAuth(app);
+const googleProvider = new GoogleAuthProvider();
+
+// Use persistent cache to support offline data and history retention across refreshes
 const db = initializeFirestore(app, {
-    localCache: memoryLocalCache()
+    localCache: persistentLocalCache()
 });
 
-// Persistence disabled to fix IndexedDbTransactionError
-// enableIndexedDbPersistence(db).catch((err) => { ... });
-
-export { db };
+export { db, auth, googleProvider };
