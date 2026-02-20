@@ -38,10 +38,10 @@ const ROLE_LABELS = {
 const ROLE_COLORS = {
     admin: 'bg-purple-100 text-purple-800 border-purple-200',
     circulos: 'bg-green-100 text-green-800 border-green-200',
-    taller: 'bg-blue-100 text-blue-800 border-blue-200',
+    taller: 'bg-campo-green-100 text-campo-green-800 border-campo-green-200',
     riego: 'bg-cyan-100 text-cyan-800 border-cyan-200',
     ventas: 'bg-orange-100 text-orange-800 border-orange-200',
-    null: 'bg-gray-100 text-gray-500 border-gray-200',
+    null: 'bg-campo-beige-100 text-campo-carbon-500 border-campo-beige-200',
 };
 
 // ─── Helper: obtener actividades de un usuario ──────────────────────────────
@@ -124,24 +124,24 @@ function ActivityModal({ user, onClose }) {
     };
 
     const typeIcon = (type) => {
-        if (type === 'taller') return <span className="text-blue-500 font-bold text-xs">TALLER</span>;
+        if (type === 'taller') return <span className="text-campo-green-500 font-bold text-xs">TALLER</span>;
         return <span className="text-green-600 font-bold text-xs">CÍRCULO</span>;
     };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="bg-campo-beige-100 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-campo-beige-100">
                     <div>
-                        <h2 className="font-bold text-gray-900 text-lg">
+                        <h2 className="font-bold text-campo-carbon-900 text-lg">
                             Actividades de {user.displayName || user.email}
                         </h2>
-                        <p className="text-xs text-gray-400">{user.email}</p>
+                        <p className="text-xs text-campo-carbon-400">{user.email}</p>
                     </div>
                     <button
                         onClick={onClose}
-                        className="text-gray-400 hover:text-gray-700 transition-colors p-1 rounded-lg hover:bg-gray-100"
+                        className="text-campo-carbon-400 hover:text-campo-carbon-700 transition-colors p-1 rounded-lg hover:bg-campo-beige-100"
                     >
                         <X size={20} />
                     </button>
@@ -154,7 +154,7 @@ function ActivityModal({ user, onClose }) {
                             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-campo-green-600" />
                         </div>
                     ) : activities.length === 0 ? (
-                        <div className="text-center py-12 text-gray-400">
+                        <div className="text-center py-12 text-campo-carbon-400">
                             <Activity size={36} className="mx-auto mb-3 opacity-40" />
                             <p className="font-medium">Sin actividades registradas</p>
                             <p className="text-xs mt-1">
@@ -166,16 +166,16 @@ function ActivityModal({ user, onClose }) {
                             {activities.map((act, i) => (
                                 <li
                                     key={act.id + i}
-                                    className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100"
+                                    className="flex items-start gap-3 p-3 rounded-xl bg-campo-beige-50 border border-campo-beige-100"
                                 >
                                     <div className="pt-0.5">{typeIcon(act.type)}</div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-gray-800 truncate">{act.label}</p>
+                                        <p className="text-sm font-medium text-campo-carbon-800 truncate">{act.label}</p>
                                         {act.detail && (
-                                            <p className="text-xs text-gray-500 mt-0.5">{act.detail}</p>
+                                            <p className="text-xs text-campo-carbon-500 mt-0.5">{act.detail}</p>
                                         )}
                                     </div>
-                                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                                    <span className="text-xs text-campo-carbon-400 whitespace-nowrap">
                                         {formatDate(act.date)}
                                     </span>
                                 </li>
@@ -192,21 +192,21 @@ function ActivityModal({ user, onClose }) {
 function DeleteConfirmModal({ user, onConfirm, onCancel }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="bg-campo-beige-100 rounded-2xl shadow-2xl w-full max-w-sm p-6">
                 <div className="flex flex-col items-center text-center gap-3">
                     <div className="w-14 h-14 rounded-full bg-red-100 flex items-center justify-center">
                         <Trash2 size={24} className="text-red-500" />
                     </div>
-                    <h2 className="font-bold text-gray-900 text-lg">Eliminar usuario</h2>
-                    <p className="text-sm text-gray-500">
+                    <h2 className="font-bold text-campo-carbon-900 text-lg">Eliminar usuario</h2>
+                    <p className="text-sm text-campo-carbon-500">
                         ¿Estás seguro de que querés eliminar a{' '}
-                        <span className="font-semibold text-gray-800">{user.displayName || user.email}</span>? Esta
+                        <span className="font-semibold text-campo-carbon-800">{user.displayName || user.email}</span>? Esta
                         acción elimina su acceso al sistema.
                     </p>
                     <div className="flex gap-3 w-full mt-2">
                         <button
                             onClick={onCancel}
-                            className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50 font-medium text-sm transition-colors"
+                            className="flex-1 px-4 py-2 rounded-xl border border-campo-beige-200 text-campo-carbon-700 hover:bg-campo-beige-50 font-medium text-sm transition-colors"
                         >
                             Cancelar
                         </button>
@@ -303,7 +303,7 @@ export default function Admin() {
                 </div>
                 <div>
                     <h1 className="text-2xl font-bold text-campo-green-950">Administración</h1>
-                    <p className="text-sm text-gray-500">Gestión de usuarios y accesos</p>
+                    <p className="text-sm text-campo-carbon-500">Gestión de usuarios y accesos</p>
                 </div>
             </div>
 
@@ -316,7 +316,7 @@ export default function Admin() {
                     { label: 'Administradores', value: usuarios.filter((u) => u.role === 'admin').length, color: 'text-purple-700', bg: 'bg-purple-50 border-purple-200' },
                 ].map((s) => (
                     <div key={s.label} className={`rounded-2xl border p-4 ${s.bg}`}>
-                        <p className="text-xs text-gray-500 font-medium">{s.label}</p>
+                        <p className="text-xs text-campo-carbon-500 font-medium">{s.label}</p>
                         <p className={`text-3xl font-bold mt-1 ${s.color}`}>{s.value}</p>
                     </div>
                 ))}
@@ -338,25 +338,25 @@ export default function Admin() {
             )}
 
             {/* Users Table */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-campo-beige-100 rounded-2xl border border-campo-beige-200 shadow-sm overflow-hidden">
                 {/* Table Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-campo-beige-100">
                     <div className="flex items-center gap-2">
                         <Users size={18} className="text-campo-green-700" />
-                        <span className="font-semibold text-gray-800">Usuarios</span>
-                        <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                        <span className="font-semibold text-campo-carbon-800">Usuarios</span>
+                        <span className="text-xs font-medium text-campo-carbon-400 bg-campo-beige-100 px-2 py-0.5 rounded-full">
                             {filtered.length}
                         </span>
                     </div>
                     {/* Search */}
                     <div className="relative">
-                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-campo-carbon-400" />
                         <input
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder="Buscar usuario..."
-                            className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-campo-green-500 focus:border-transparent"
+                            className="pl-8 pr-3 py-1.5 text-sm border border-campo-beige-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-campo-green-500 focus:border-transparent"
                         />
                     </div>
                 </div>
@@ -366,7 +366,7 @@ export default function Admin() {
                         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-campo-green-600" />
                     </div>
                 ) : filtered.length === 0 ? (
-                    <div className="text-center py-16 text-gray-400">
+                    <div className="text-center py-16 text-campo-carbon-400">
                         <Users size={36} className="mx-auto mb-3 opacity-30" />
                         <p className="font-medium">No se encontraron usuarios</p>
                     </div>
@@ -382,7 +382,7 @@ export default function Admin() {
                                 : usuario.email?.[0]?.toUpperCase() || '?';
 
                             return (
-                                <div key={usuario.id} className="transition-colors hover:bg-gray-50">
+                                <div key={usuario.id} className="transition-colors hover:bg-campo-beige-50">
                                     <div className="flex items-center gap-3 px-6 py-4">
                                         {/* Avatar */}
                                         <div className="w-10 h-10 rounded-full bg-campo-green-700 flex items-center justify-center text-white font-bold text-sm shrink-0 select-none">
@@ -391,10 +391,10 @@ export default function Admin() {
 
                                         {/* Info */}
                                         <div className="flex-1 min-w-0">
-                                            <p className="font-semibold text-gray-900 text-sm truncate">
+                                            <p className="font-semibold text-campo-carbon-900 text-sm truncate">
                                                 {usuario.displayName || '—'}
                                             </p>
-                                            <p className="text-xs text-gray-400 truncate">{usuario.email}</p>
+                                            <p className="text-xs text-campo-carbon-400 truncate">{usuario.email}</p>
                                         </div>
 
                                         {/* Role selector */}
@@ -404,7 +404,7 @@ export default function Admin() {
                                                     <CheckCircle size={14} /> Guardado
                                                 </span>
                                             ) : isUpdating ? (
-                                                <Clock size={14} className="animate-spin text-gray-400" />
+                                                <Clock size={14} className="animate-spin text-campo-carbon-400" />
                                             ) : null}
                                             <select
                                                 value={usuario.role || ''}
@@ -427,21 +427,21 @@ export default function Admin() {
                                             <button
                                                 onClick={() => setSelectedUser(usuario)}
                                                 title="Ver actividades"
-                                                className="p-2 rounded-lg text-gray-400 hover:text-campo-green-700 hover:bg-campo-green-50 transition-colors"
+                                                className="p-2 rounded-lg text-campo-carbon-400 hover:text-campo-green-700 hover:bg-campo-green-50 transition-colors"
                                             >
                                                 <Activity size={16} />
                                             </button>
                                             <button
                                                 onClick={() => setExpandedUser(isExpanded ? null : usuario.id)}
                                                 title="Ver detalles"
-                                                className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+                                                className="p-2 rounded-lg text-campo-carbon-400 hover:text-campo-carbon-700 hover:bg-campo-beige-100 transition-colors"
                                             >
                                                 {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                                             </button>
                                             <button
                                                 onClick={() => setDeleteTarget(usuario)}
                                                 title="Eliminar usuario"
-                                                className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                className="p-2 rounded-lg text-campo-carbon-400 hover:text-red-500 hover:bg-red-50 transition-colors"
                                             >
                                                 <Trash2 size={16} />
                                             </button>
@@ -451,26 +451,26 @@ export default function Admin() {
                                     {/* Expanded details */}
                                     {isExpanded && (
                                         <div className="px-6 pb-4 ml-13">
-                                            <div className="ml-13 bg-gray-50 rounded-xl p-4 text-xs space-y-2 border border-gray-100">
+                                            <div className="ml-13 bg-campo-beige-50 rounded-xl p-4 text-xs space-y-2 border border-campo-beige-100">
                                                 <div className="flex gap-2">
-                                                    <span className="text-gray-400 w-20">UID</span>
-                                                    <span className="font-mono text-gray-600 break-all">
+                                                    <span className="text-campo-carbon-400 w-20">UID</span>
+                                                    <span className="font-mono text-campo-carbon-600 break-all">
                                                         {usuario.uid || usuario.id}
                                                     </span>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <span className="text-gray-400 w-20">Email</span>
-                                                    <span className="text-gray-600">{usuario.email || '—'}</span>
+                                                    <span className="text-campo-carbon-400 w-20">Email</span>
+                                                    <span className="text-campo-carbon-600">{usuario.email || '—'}</span>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <span className="text-gray-400 w-20">Nombre</span>
-                                                    <span className="text-gray-600">
+                                                    <span className="text-campo-carbon-400 w-20">Nombre</span>
+                                                    <span className="text-campo-carbon-600">
                                                         {usuario.displayName || '—'}
                                                     </span>
                                                 </div>
                                                 <div className="flex gap-2">
-                                                    <span className="text-gray-400 w-20">Rol actual</span>
-                                                    <span className="text-gray-600">
+                                                    <span className="text-campo-carbon-400 w-20">Rol actual</span>
+                                                    <span className="text-campo-carbon-600">
                                                         {ROLE_LABELS[usuario.role] || 'Sin rol'}
                                                     </span>
                                                 </div>

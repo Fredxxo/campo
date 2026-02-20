@@ -1,64 +1,81 @@
 @import "tailwindcss";
 
 @theme {
-    /* Earth / Farm Theme Colors */
-    --color-campo-green-50: #f2fcf5;
-    --color-campo-green-100: #e1f8e8;
-    --color-campo-green-200: #c3eed3;
-    --color-campo-green-300: #96ddb3;
-    --color-campo-green-400: #62c38d;
-    --color-campo-green-500: #3ba56d;
-    --color-campo-green-600: #2b8455;
-    --color-campo-green-700: #266946;
-    --color-campo-green-800: #21543a;
-    --color-campo-green-900: #1c4532;
-    --color-campo-green-950: #0d261b;
+    /* ===== New Color Palette ===== */
 
-    --color-campo-brown-50: #fdf8f6;
-    --color-campo-brown-100: #f2e8e5;
-    --color-campo-brown-200: #eaddd7;
-    --color-campo-brown-300: #e0cec7;
-    --color-campo-brown-400: #d2bab0;
-    --color-campo-brown-500: #a18072;
-    --color-campo-brown-600: #8a6a5c;
-    --color-campo-brown-700: #74574b;
-    --color-campo-brown-800: #5f463d;
-    --color-campo-brown-900: #4e3a34;
-    --color-campo-brown-950: #2b1f1c;
+    /* Verde Bosque Oscuro — anchor: #2D6A4F */
+    --color-campo-green-50: #edf5f1;
+    --color-campo-green-100: #d4e8de;
+    --color-campo-green-200: #a9d1bd;
+    --color-campo-green-300: #7eba9c;
+    --color-campo-green-400: #4e9a74;
+    --color-campo-green-500: #357e5c;
+    --color-campo-green-600: #2D6A4F;
+    --color-campo-green-700: #255841;
+    --color-campo-green-800: #1d4633;
+    --color-campo-green-900: #163527;
+    --color-campo-green-950: #0c1f17;
 
-    --color-campo-beige-50: #fbfbf9;
-    --color-campo-beige-100: #f5f5f0;
-    --color-campo-beige-200: #efece5;
-    --color-campo-beige-300: #e3dec9;
-    --color-campo-beige-400: #d2c8a7;
-    --color-campo-beige-500: #b5aa85;
-    --color-campo-beige-600: #998c69;
-    --color-campo-beige-700: #7a6e52;
-    --color-campo-beige-800: #635843;
-    --color-campo-beige-900: #534a3a;
-    --color-campo-beige-950: #2e291f;
+    /* Marrón Arcilla — anchor: #6C584C */
+    --color-campo-brown-50: #f8f5f3;
+    --color-campo-brown-100: #ede7e3;
+    --color-campo-brown-200: #ddd3cb;
+    --color-campo-brown-300: #c4b3a6;
+    --color-campo-brown-400: #a38e7e;
+    --color-campo-brown-500: #8a7565;
+    --color-campo-brown-600: #6C584C;
+    --color-campo-brown-700: #5a493f;
+    --color-campo-brown-800: #4a3c34;
+    --color-campo-brown-900: #3d312b;
+    --color-campo-brown-950: #221b17;
 
-    /* Semantic Colors mapping */
+    /* Crema Suave — anchor: #F5F3F0 */
+    --color-campo-beige-50: #FAFAF9;
+    --color-campo-beige-100: #F5F3F0;
+    --color-campo-beige-200: #ECEAE6;
+    --color-campo-beige-300: #DBD8D2;
+    --color-campo-beige-400: #C2BEB6;
+    --color-campo-beige-500: #9E998F;
+    --color-campo-beige-600: #7F7A72;
+    --color-campo-beige-700: #65615B;
+    --color-campo-beige-800: #504D48;
+    --color-campo-beige-900: #43403C;
+    --color-campo-beige-950: #262422;
+
+    /* Gris Carbón — anchor: #333533 */
+    --color-campo-carbon-50: #f4f4f4;
+    --color-campo-carbon-100: #e0e0e0;
+    --color-campo-carbon-200: #c2c3c2;
+    --color-campo-carbon-300: #a3a4a3;
+    --color-campo-carbon-400: #767876;
+    --color-campo-carbon-500: #5a5c5a;
+    --color-campo-carbon-600: #474947;
+    --color-campo-carbon-700: #3b3d3b;
+    --color-campo-carbon-800: #333533;
+    --color-campo-carbon-900: #272827;
+    --color-campo-carbon-950: #161716;
+
+    /* ===== Semantic Colors ===== */
     --color-primary: var(--color-campo-green-600);
-    --color-primary-foreground: var(--color-campo-green-50);
+    --color-primary-foreground: var(--color-campo-beige-50);
 
     --color-secondary: var(--color-campo-brown-100);
     --color-secondary-foreground: var(--color-campo-brown-900);
 
     --color-accent: var(--color-campo-beige-100);
-    --color-accent-foreground: var(--color-campo-beige-900);
+    --color-accent-foreground: var(--color-campo-carbon-800);
 
     --color-destructive: #ef4444;
     --color-destructive-foreground: #fef2f2;
 
-    --color-muted: var(--color-campo-beige-100);
+    --color-muted: var(--color-campo-beige-200);
     --color-muted-foreground: var(--color-campo-beige-600);
 
     --color-card: #ffffff;
-    --color-card-foreground: var(--color-campo-brown-950);
+    --color-card-foreground: var(--color-campo-carbon-800);
 
     --color-popover: #ffffff;
-    --color-popover-foreground: var(--color-campo-brown-950);
+    --color-popover-foreground: var(--color-campo-carbon-800);
 
     --color-border: var(--color-campo-beige-200);
     --color-input: var(--color-campo-beige-200);
@@ -78,6 +95,6 @@
     }
 
     body {
-        @apply bg-campo-beige-50 text-campo-brown-950 antialiased font-sans;
+        @apply bg-campo-beige-50 text-campo-carbon-800 antialiased font-sans;
     }
 }

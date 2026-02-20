@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Plus, Circle, History, X, Calendar, ArrowRight, Clock, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Circle, History, X, Calendar, ArrowRight, Clock, Trash2, AlertTriangle, Droplet } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
 
@@ -38,6 +38,7 @@ const Circulos = () => {
     const [history, setHistory] = useState({});
     const [statusHistory, setStatusHistory] = useState({}); // New separate history for status
     const [selectedCircle, setSelectedCircle] = useState(null);
+    const [activePivots, setActivePivots] = useState({}); // circleId -> pivotName mapping for active irrigation
 
     // Enfardado Modal State
     const [isEnfardadoModalOpen, setIsEnfardadoModalOpen] = useState(false);
@@ -109,7 +110,22 @@ const Circulos = () => {
             console.error("Error fetching circles:", error);
         });
 
-        return () => unsubscribe();
+        // Subscribe to pivots to know which circles are being irrigated
+        const unsubPivots = onSnapshot(collection(db, "pivots"), (snapshot) => {
+            const active = {};
+            snapshot.forEach(d => {
+                const data = d.data();
+                if (data.startTime && data.activeCircle) {
+                    active[data.activeCircle] = data.name || d.id;
+                }
+            });
+            setActivePivots(active);
+        });
+
+        return () => {
+            unsubscribe();
+            unsubPivots();
+        };
     }, []);
 
     // Estado para el modal de agregar círculo
@@ -355,7 +371,7 @@ const Circulos = () => {
             case 'Corte': return 'text-amber-600 bg-amber-50 border-amber-200';
             case 'Rastrillado': return 'text-orange-600 bg-orange-50 border-orange-200';
             case 'Enfardado': return 'text-purple-600 bg-purple-50 border-purple-200';
-            default: return 'text-slate-600 bg-slate-50 border-slate-200';
+            default: return 'text-campo-carbon-600 bg-campo-beige-50 border-campo-beige-300';
         }
     };
 
@@ -374,12 +390,12 @@ const Circulos = () => {
             case 'Listo para cortar': return 'text-emerald-700 bg-emerald-100 border-emerald-200';
             case 'Cortar urgente': return 'text-amber-700 bg-amber-100 border-amber-200';
             case 'Pasado': return 'text-red-700 bg-red-100 border-red-200';
-            default: return 'text-slate-500 bg-slate-100 border-slate-200';
+            default: return 'text-campo-beige-600 bg-campo-beige-200 border-campo-beige-300';
         }
     };
 
     const getSituationBadgeColor = (situation) => {
-        return 'text-slate-600 bg-slate-100 border-slate-200';
+        return 'text-campo-carbon-600 bg-campo-beige-200 border-campo-beige-300';
     };
 
     return (
@@ -398,15 +414,16 @@ const Circulos = () => {
                 {circulosList.map((circulo, index) => {
                     const currentState = getCurrentState(circulo.name);
                     const currentStatus = getCurrentStatus(circulo.name);
+                    const irrigatingPivot = activePivots[circulo.name]; // pivot name if this circle is being irrigated
 
                     const activityColorClass = getActivityColor(currentState.activity);
-                    const cardColorClass = getStatusColor(currentStatus);
+                    const cardColorClass = irrigatingPivot ? 'border-campo-green-400 ring-1 ring-campo-green-400 bg-campo-green-50/30' : getStatusColor(currentStatus);
                     const statusBadgeClass = getStatusBadgeColor(currentStatus);
 
                     return (
                         <Card
                             key={index}
-                            className={`hover:shadow-md transition-all duration-300 group cursor-pointer bg-white ${cardColorClass}`}
+                            className={`hover:shadow-md transition-all duration-300 group cursor-pointer bg-campo-beige-100 ${cardColorClass}`}
                         >
                             <CardContent className="p-6">
                                 <div className="flex items-center justify-between mb-4">
@@ -418,7 +435,7 @@ const Circulos = () => {
                                     <div className="flex items-center gap-1">
                                         <div className="relative">
                                             <select
-                                                className={`appearance-none text-xs font-bold px-3 py-1 rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 text-right ${currentStatus ? statusBadgeClass : 'text-slate-400 bg-slate-50 border-slate-200'}`}
+                                                className={`appearance-none text-xs font-bold px-3 py-1 rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 text-right ${currentStatus ? statusBadgeClass : 'text-campo-beige-500 bg-campo-beige-50 border-campo-beige-300'}`}
                                                 value={currentStatus || ''}
                                                 onChange={(e) => handleStatusChange(circulo.name, e.target.value)}
                                                 onClick={(e) => e.stopPropagation()}
@@ -430,7 +447,7 @@ const Circulos = () => {
                                             </select>
                                         </div>
                                         <button
-                                            className="text-slate-300 hover:text-red-500 hover:bg-slate-50 p-1 rounded-full transition-colors"
+                                            className="text-campo-beige-400 hover:text-red-500 hover:bg-campo-beige-50 p-1 rounded-full transition-colors"
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setDeleteConfirmation({ isOpen: true, circleName: circulo.name });
@@ -445,24 +462,33 @@ const Circulos = () => {
                                     <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">
                                         {circulo.name}
                                     </h3>
-                                    <div className="flex items-center bg-slate-50 rounded-md px-2 py-1 border border-transparent hover:border-slate-200 transition-colors">
+                                    <div className="flex items-center bg-campo-beige-50 rounded-md px-2 py-1 border border-transparent hover:border-campo-beige-300 transition-colors">
                                         <input
                                             type="number"
-                                            className="w-12 bg-transparent text-xs font-medium text-slate-600 focus:outline-none text-right"
+                                            className="w-12 bg-transparent text-xs font-medium text-campo-carbon-600 focus:outline-none text-right"
                                             value={circulo.hectares || ''}
                                             onChange={(e) => handleHectaresChange(index, e.target.value)}
                                             onClick={(e) => e.stopPropagation()}
                                             placeholder="-"
                                         />
-                                        <span className="text-xs font-medium text-slate-400 ml-1">Has</span>
+                                        <span className="text-xs font-medium text-campo-beige-500 ml-1">Has</span>
                                     </div>
                                 </div>
+
+                                {/* Irrigation Active Indicator */}
+                                {irrigatingPivot && (
+                                    <div className="mt-2 flex items-center gap-2 bg-campo-green-50 text-campo-green-700 border border-campo-green-200 rounded-lg px-3 py-1.5">
+                                        <Droplet className="h-3.5 w-3.5 animate-pulse" />
+                                        <span className="text-xs font-bold">Regando</span>
+                                        <span className="text-xs text-campo-green-500">({irrigatingPivot})</span>
+                                    </div>
+                                )}
 
                                 <div className="mt-4 flex items-center justify-between">
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="text-xs text-slate-500 hover:text-primary p-0 h-auto font-normal flex items-center gap-1"
+                                        className="text-xs text-campo-beige-600 hover:text-primary p-0 h-auto font-normal flex items-center gap-1"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             setSelectedCircle(circulo.name);
@@ -470,16 +496,16 @@ const Circulos = () => {
                                     >
                                         <History className="h-3 w-3" /> Ver Historial
                                     </Button>
-                                    <span className="text-[10px] text-slate-400">
+                                    <span className="text-[10px] text-campo-beige-500">
                                         {currentState.startDate ? formatDate(currentState.startDate) : ''}
                                     </span>
                                 </div>
 
                                 <div className="mt-4 space-y-3">
                                     <div>
-                                        <label className="text-xs font-medium text-slate-500 block mb-1">Actividad</label>
+                                        <label className="text-xs font-medium text-campo-beige-600 block mb-1">Actividad</label>
                                         <select
-                                            className="w-full text-xs border-slate-200 rounded-md p-2 bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
+                                            className="w-full text-xs border-campo-beige-300 rounded-md p-2 bg-campo-beige-50 focus:ring-2 focus:ring-campo-green-500 focus:border-campo-green-500 transition-shadow"
                                             value={currentState.activity || ''}
                                             onChange={(e) => handleActivityChange(circulo.name, e.target.value)}
                                             onClick={(e) => e.stopPropagation()}
@@ -492,9 +518,9 @@ const Circulos = () => {
                                     </div>
 
                                     <div>
-                                        <label className="text-xs font-medium text-slate-500 block mb-1">Situación</label>
+                                        <label className="text-xs font-medium text-campo-beige-600 block mb-1">Situación</label>
                                         <select
-                                            className="w-full text-xs border-slate-200 rounded-md p-2 bg-slate-50 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow"
+                                            className="w-full text-xs border-campo-beige-300 rounded-md p-2 bg-campo-beige-50 focus:ring-2 focus:ring-campo-green-500 focus:border-campo-green-500 transition-shadow"
                                             value={currentState.situation || 'Iniciado'}
                                             onChange={(e) => handleSituationChange(circulo.name, e.target.value)}
                                             onClick={(e) => e.stopPropagation()}
@@ -515,19 +541,19 @@ const Circulos = () => {
             {isAddModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsAddModalOpen(false)}>
                     <div
-                        className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="p-4 border-b flex items-center justify-between bg-slate-50">
-                            <h2 className="text-xl font-bold text-slate-800">Nuevo Círculo</h2>
+                        <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
+                            <h2 className="text-xl font-bold text-campo-carbon-800">Nuevo Círculo</h2>
                             <Button variant="ghost" size="icon" onClick={() => setIsAddModalOpen(false)}>
-                                <X className="h-5 w-5 text-slate-400 hover:text-red-500" />
+                                <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
                             </Button>
                         </div>
 
                         <div className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre / Número del Círculo</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Nombre / Número del Círculo</label>
                                 <input
                                     type="text"
                                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -538,7 +564,7 @@ const Circulos = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Hectáreas (Opcional)</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Hectáreas (Opcional)</label>
                                 <input
                                     type="number"
                                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
@@ -561,22 +587,22 @@ const Circulos = () => {
             {isEnfardadoModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsEnfardadoModalOpen(false)}>
                     <div
-                        className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
+                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="p-4 border-b flex items-center justify-between bg-slate-50">
-                            <h2 className="text-xl font-bold text-slate-800">Datos de Enfardado</h2>
+                        <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
+                            <h2 className="text-xl font-bold text-campo-carbon-800">Datos de Enfardado</h2>
                             <Button variant="ghost" size="icon" onClick={() => setIsEnfardadoModalOpen(false)}>
-                                <X className="h-5 w-5 text-slate-400 hover:text-red-500" />
+                                <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
                             </Button>
                         </div>
 
                         <div className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Cantidad (Unidades)</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Cantidad (Unidades)</label>
                                 <input
                                     type="number"
-                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
                                     placeholder="Ej: 150"
                                     value={enfardadoData.quantity}
                                     onChange={(e) => setEnfardadoData({ ...enfardadoData, quantity: e.target.value })}
@@ -584,10 +610,10 @@ const Circulos = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Peso Total (Kg)</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Peso Total (Kg)</label>
                                 <input
                                     type="number"
-                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
                                     placeholder="Ej: 4500"
                                     value={enfardadoData.weight}
                                     onChange={(e) => setEnfardadoData({ ...enfardadoData, weight: e.target.value })}
@@ -595,9 +621,9 @@ const Circulos = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Calidad</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Calidad</label>
                                 <select
-                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
                                     value={enfardadoData.quality}
                                     onChange={(e) => setEnfardadoData({ ...enfardadoData, quality: e.target.value })}
                                 >
@@ -613,7 +639,7 @@ const Circulos = () => {
                             <div className="pt-4 flex justify-end gap-2">
                                 <Button variant="ghost" onClick={() => setIsEnfardadoModalOpen(false)}>Cancelar</Button>
                                 <Button
-                                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                                    className="bg-campo-green-600 hover:bg-campo-green-700 text-white"
                                     onClick={confirmEnfardado}
                                     disabled={!enfardadoData.quantity || !enfardadoData.weight || !enfardadoData.quality}
                                 >
@@ -629,16 +655,16 @@ const Circulos = () => {
             {deleteConfirmation.isOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirmation({ isOpen: false, circleName: null })}>
                     <div
-                        className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
+                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
                         onClick={e => e.stopPropagation()}
                     >
                         <div className="p-6 text-center">
                             <div className="bg-red-50 text-red-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                                 <Trash2 className="h-8 w-8" />
                             </div>
-                            <h2 className="text-xl font-bold text-slate-800 mb-2">¿Eliminar Círculo?</h2>
-                            <p className="text-sm text-slate-600 mb-6">
-                                ¿Estás seguro que deseas eliminar <span className="font-bold text-slate-800">{deleteConfirmation.circleName}</span>? Esta acción no se puede deshacer fácilmente.
+                            <h2 className="text-xl font-bold text-campo-carbon-800 mb-2">¿Eliminar Círculo?</h2>
+                            <p className="text-sm text-campo-carbon-600 mb-6">
+                                ¿Estás seguro que deseas eliminar <span className="font-bold text-campo-carbon-800">{deleteConfirmation.circleName}</span>? Esta acción no se puede deshacer fácilmente.
                             </p>
 
                             <div className="flex gap-3 justify-center">
@@ -654,30 +680,30 @@ const Circulos = () => {
             {selectedCircle && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedCircle(null)}>
                     <div
-                        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col"
+                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col"
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="p-4 border-b flex items-center justify-between bg-slate-50">
+                        <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
                             <div>
-                                <h2 className="text-xl font-bold text-slate-800">Historial de Actividades</h2>
-                                <p className="text-sm text-slate-500">Círculo: {selectedCircle}</p>
+                                <h2 className="text-xl font-bold text-campo-carbon-800">Historial de Actividades</h2>
+                                <p className="text-sm text-campo-beige-600">Círculo: {selectedCircle}</p>
                             </div>
                             <Button variant="ghost" size="icon" onClick={() => setSelectedCircle(null)}>
-                                <X className="h-5 w-5 text-slate-400 hover:text-red-500" />
+                                <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
                             </Button>
                         </div>
 
                         <div className="flex-1 overflow-auto p-0">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-0 h-full">
                                 {/* Activity History Column */}
-                                <div className="p-6 border-r border-slate-100 overflow-y-auto">
-                                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Actividades</h3>
-                                    <div className="relative border-l-2 border-slate-200 ml-3 space-y-8 pl-6 py-2">
+                                <div className="p-6 border-r border-campo-beige-200 overflow-y-auto">
+                                    <h3 className="text-sm font-bold text-campo-beige-600 uppercase tracking-wider mb-6">Actividades</h3>
+                                    <div className="relative border-l-2 border-campo-beige-300 ml-3 space-y-8 pl-6 py-2">
                                         {(history[selectedCircle] || []).slice().reverse().map((item, idx) => (
                                             <div key={item.id} className="relative group">
-                                                <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${getActivityColor(item.activity).split(' ')[1] || 'bg-slate-300'}`}></div>
+                                                <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-campo-beige-100 shadow-sm ${getActivityColor(item.activity).split(' ')[1] || 'bg-campo-beige-400'}`}></div>
 
-                                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 hover:border-slate-300 transition-colors relative">
+                                                <div className="bg-campo-beige-50 rounded-lg p-4 border border-campo-beige-200 hover:border-campo-beige-400 transition-colors relative">
                                                     <div className="flex justify-between items-start mb-2">
                                                         <div className="flex flex-col gap-1">
                                                             <h3 className={`font-bold text-sm px-2 py-0.5 rounded-md w-fit ${getActivityColor(item.activity)}`}>
@@ -693,7 +719,7 @@ const Circulos = () => {
                                                                     e.stopPropagation();
                                                                     deleteHistoryItem(selectedCircle, item.id, 'activity');
                                                                 }}
-                                                                className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                                                                className="text-campo-beige-500 hover:text-red-500 transition-colors p-1"
                                                                 title="Eliminar registro"
                                                             >
                                                                 <Trash2 className="h-4 w-4" />
@@ -703,23 +729,23 @@ const Circulos = () => {
 
                                                     {/* Display Enfardado Data */}
                                                     {item.activity === 'Enfardado' && (item.quantity || item.weight || item.quality) && (
-                                                        <div className="mt-2 text-xs font-bold text-slate-700 bg-purple-50 p-2 rounded border border-purple-100 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-300 flex gap-3 flex-wrap">
+                                                        <div className="mt-2 text-xs font-bold text-campo-carbon-700 bg-purple-50 p-2 rounded border border-purple-100 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-300 flex gap-3 flex-wrap">
                                                             {item.quantity && <span>📦 {item.quantity} un.</span>}
                                                             {item.weight && <span>⚖️ {item.weight} kg</span>}
                                                             {item.quality && <span>⭐ {item.quality}</span>}
                                                         </div>
                                                     )}
 
-                                                    <div className="grid grid-cols-2 gap-4 text-xs text-slate-500 mt-3">
+                                                    <div className="grid grid-cols-2 gap-4 text-xs text-campo-beige-600 mt-3">
                                                         <div className="flex items-center gap-2">
                                                             <Calendar className="h-3 w-3" />
-                                                            <span>Inicio: {formatDate(item.startDate)} <span className="text-slate-400 ml-1">{formatTime(item.startDate)}</span></span>
+                                                            <span>Inicio: {formatDate(item.startDate)} <span className="text-campo-beige-500 ml-1">{formatTime(item.startDate)}</span></span>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             {item.endDate ? (
                                                                 <>
                                                                     <div className="w-3 flex justify-center"><ArrowRight className="h-3 w-3" /></div>
-                                                                    <span>Fin: {formatDate(item.endDate)} <span className="text-slate-400 ml-1">{formatTime(item.endDate)}</span></span>
+                                                                    <span>Fin: {formatDate(item.endDate)} <span className="text-campo-beige-500 ml-1">{formatTime(item.endDate)}</span></span>
                                                                 </>
                                                             ) : (
                                                                 <span className="text-emerald-600 font-medium flex items-center gap-1">
@@ -732,25 +758,25 @@ const Circulos = () => {
                                             </div>
                                         ))}
                                         {(history[selectedCircle] || []).length === 0 && (
-                                            <p className="text-center text-slate-400 py-8">No hay actividades registradas.</p>
+                                            <p className="text-center text-campo-beige-500 py-8">No hay actividades registradas.</p>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Status History Column */}
-                                <div className="p-6 bg-slate-50/50 overflow-y-auto">
-                                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Historial de Estado</h3>
+                                <div className="p-6 bg-campo-beige-50/50 overflow-y-auto">
+                                    <h3 className="text-sm font-bold text-campo-beige-600 uppercase tracking-wider mb-6">Historial de Estado</h3>
                                     <div className="space-y-4">
                                         {(statusHistory[selectedCircle] || []).slice().reverse().map((item, idx) => (
-                                            <div key={item.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex  justify-between items-center">
+                                            <div key={item.id} className="bg-campo-beige-100 p-3 rounded-lg border border-campo-beige-300 shadow-sm flex  justify-between items-center">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-2 h-2 rounded-full ${getStatusColor(item.status).includes('emerald') ? 'bg-emerald-500' :
                                                         getStatusColor(item.status).includes('amber') ? 'bg-amber-500' :
-                                                            getStatusColor(item.status).includes('red') ? 'bg-red-500' : 'bg-slate-300'
+                                                            getStatusColor(item.status).includes('red') ? 'bg-red-500' : 'bg-campo-beige-400'
                                                         }`}></div>
                                                     <div>
-                                                        <p className="text-sm font-bold text-slate-700">{item.status || 'Normal'}</p>
-                                                        <p className="text-xs text-slate-400">{formatDate(item.date)} {formatTime(item.date)}</p>
+                                                        <p className="text-sm font-bold text-campo-carbon-700">{item.status || 'Normal'}</p>
+                                                        <p className="text-xs text-campo-beige-500">{formatDate(item.date)} {formatTime(item.date)}</p>
                                                     </div>
                                                 </div>
                                                 <button
@@ -758,7 +784,7 @@ const Circulos = () => {
                                                         e.stopPropagation();
                                                         deleteHistoryItem(selectedCircle, item.id, 'status');
                                                     }}
-                                                    className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                                                    className="text-campo-beige-400 hover:text-red-500 transition-colors p-1"
                                                     title="Eliminar registro"
                                                 >
                                                     <Trash2 className="h-3 w-3" />
@@ -766,7 +792,7 @@ const Circulos = () => {
                                             </div>
                                         ))}
                                         {(statusHistory[selectedCircle] || []).length === 0 && (
-                                            <p className="text-center text-slate-400 py-8">No hay cambios de estado registrados.</p>
+                                            <p className="text-center text-campo-beige-500 py-8">No hay cambios de estado registrados.</p>
                                         )}
                                     </div>
                                 </div>

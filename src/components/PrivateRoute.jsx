@@ -44,11 +44,11 @@ const PrivateRoute = ({ children }) => {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 text-center px-4">
                 <div className="text-5xl mb-4">🔒</div>
-                <h1 className="text-2xl font-bold text-gray-800 mb-2">Sin acceso</h1>
-                <p className="text-gray-500 mb-2">
+                <h1 className="text-2xl font-bold text-campo-carbon-800 mb-2">Sin acceso</h1>
+                <p className="text-campo-beige-600 mb-2">
                     Tu cuenta no tiene un rol asignado. Contactá al administrador.
                 </p>
-                <p className="text-xs text-gray-400 mb-6">{user.email}</p>
+                <p className="text-xs text-campo-beige-500 mb-6">{user.email}</p>
                 <button
                     onClick={() => signOut(auth)}
                     className="px-5 py-2 bg-gray-800 hover:bg-gray-900 text-white text-sm font-medium rounded-lg transition-colors"

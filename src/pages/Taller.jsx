@@ -131,7 +131,7 @@ const Taller = () => {
 
     const getCategoryColor = (category) => {
         // You can customize colors per category if desired
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-campo-brown-100 text-campo-brown-700';
     };
 
     const formatDuration = (start, end) => {
@@ -174,9 +174,9 @@ const Taller = () => {
                                         <select
                                             className={`appearance-none text-xs font-bold px-3 py-1 rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 text-center
                                                 ${item.status === 'Pendiente' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                                                    item.status === 'En Reparación' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                                    item.status === 'En Reparación' ? 'bg-campo-green-100 text-campo-green-800 border-campo-green-200' :
                                                         item.status === 'Finalizado' ? 'bg-green-100 text-green-800 border-green-200' :
-                                                            'bg-slate-100 text-slate-800 border-slate-200'}`}
+                                                            'bg-campo-beige-200 text-campo-carbon-800 border-campo-beige-300'}`}
                                             value={item.status}
                                             onChange={(e) => handleStatusChange(item, e.target.value)}
                                         >
@@ -188,40 +188,40 @@ const Taller = () => {
                                     </div>
                                     <button
                                         onClick={() => handleDeleteItem(item.id)}
-                                        className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                                        className="text-campo-beige-400 hover:text-red-500 transition-colors p-1"
                                     >
                                         <Trash2 className="h-5 w-5" />
                                     </button>
                                 </div>
                             </div>
 
-                            <h3 className={`text-lg font-bold mb-2 ${item.status === 'Finalizado' ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                            <h3 className={`text-lg font-bold mb-2 ${item.status === 'Finalizado' ? 'line-through text-campo-beige-500' : 'text-campo-carbon-800'}`}>
                                 {item.description}
                             </h3>
 
                             <div className="space-y-1 mt-2">
                                 {item.sector && (
-                                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                                        <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                                    <div className="flex items-center gap-2 text-sm text-campo-carbon-600">
+                                        <MapPin className="h-3.5 w-3.5 text-campo-beige-500" />
                                         <span>{item.sector}</span>
                                     </div>
                                 )}
                                 {item.operator && (
-                                    <div className="flex items-center gap-2 text-sm text-slate-600">
-                                        <User className="h-3.5 w-3.5 text-slate-400" />
+                                    <div className="flex items-center gap-2 text-sm text-campo-carbon-600">
+                                        <User className="h-3.5 w-3.5 text-campo-beige-500" />
                                         <span>{item.operator}</span>
                                     </div>
                                 )}
                             </div>
 
-                            <div className="flex flex-col gap-2 text-xs text-slate-500 mt-4 pt-4 border-t border-slate-100">
+                            <div className="flex flex-col gap-2 text-xs text-campo-beige-600 mt-4 pt-4 border-t border-campo-beige-200">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-1">
                                         <Calendar className="h-3 w-3" />
                                         <span>Indicado: {new Date(item.date).toLocaleDateString()}</span>
                                     </div>
                                     {item.createdAt && (
-                                        <span className="text-slate-400 text-[10px]">
+                                        <span className="text-campo-beige-500 text-[10px]">
                                             Creado: {new Date(item.createdAt).toLocaleDateString()}
                                         </span>
                                     )}
@@ -229,17 +229,17 @@ const Taller = () => {
 
                                 {/* Timer Section */}
                                 <div className="grid grid-cols-2 gap-2 mt-2">
-                                    <div className="bg-slate-50 p-2 rounded-md border border-slate-100">
-                                        <span className="block text-[10px] uppercase text-slate-400 font-bold mb-1">Tiempo Pendiente</span>
-                                        <div className="flex items-center gap-1 text-slate-700 font-medium">
+                                    <div className="bg-campo-beige-50 p-2 rounded-md border border-campo-beige-200">
+                                        <span className="block text-[10px] uppercase text-campo-beige-500 font-bold mb-1">Tiempo Pendiente</span>
+                                        <div className="flex items-center gap-1 text-campo-carbon-700 font-medium">
                                             <Timer className="h-3 w-3 text-amber-500" />
                                             {formatDuration(item.createdAt, item.startedAt)}
                                         </div>
                                     </div>
-                                    <div className="bg-slate-50 p-2 rounded-md border border-slate-100">
-                                        <span className="block text-[10px] uppercase text-slate-400 font-bold mb-1">Tiempo Reparación</span>
-                                        <div className="flex items-center gap-1 text-slate-700 font-medium">
-                                            <Wrench className="h-3 w-3 text-blue-500" />
+                                    <div className="bg-campo-beige-50 p-2 rounded-md border border-campo-beige-200">
+                                        <span className="block text-[10px] uppercase text-campo-beige-500 font-bold mb-1">Tiempo Reparación</span>
+                                        <div className="flex items-center gap-1 text-campo-carbon-700 font-medium">
+                                            <Wrench className="h-3 w-3 text-campo-green-500" />
                                             {item.startedAt ? formatDuration(item.startedAt, item.completedAt) : '-'}
                                         </div>
                                     </div>
@@ -251,10 +251,10 @@ const Taller = () => {
             </div>
 
             {maintenanceItems.length === 0 && (
-                <div className="text-center py-12 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
-                    <Wrench className="h-12 w-12 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-500 font-medium">No hay mantenimientos registrados.</p>
-                    <p className="text-sm text-slate-400">Comienza agregando una nueva entrada.</p>
+                <div className="text-center py-12 bg-campo-beige-50 rounded-lg border-2 border-dashed border-campo-beige-300">
+                    <Wrench className="h-12 w-12 text-campo-beige-400 mx-auto mb-4" />
+                    <p className="text-campo-beige-600 font-medium">No hay mantenimientos registrados.</p>
+                    <p className="text-sm text-campo-beige-500">Comienza agregando una nueva entrada.</p>
                 </div>
             )}
 
@@ -262,19 +262,19 @@ const Taller = () => {
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsModalOpen(false)}>
                     <div
-                        className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
                         onClick={e => e.stopPropagation()}
                     >
-                        <div className="p-4 border-b flex items-center justify-between bg-slate-50">
-                            <h2 className="text-xl font-bold text-slate-800">Nueva Entrada de Taller</h2>
+                        <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
+                            <h2 className="text-xl font-bold text-campo-carbon-800">Nueva Entrada de Taller</h2>
                             <Button variant="ghost" size="icon" onClick={() => setIsModalOpen(false)}>
-                                <X className="h-5 w-5 text-slate-400 hover:text-red-500" />
+                                <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
                             </Button>
                         </div>
 
                         <div className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Categoría</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Categoría</label>
                                 <select
                                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                                     value={newItem.category}
@@ -288,7 +288,7 @@ const Taller = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Sector donde se averió</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Sector donde se averió</label>
                                 <select
                                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                                     value={newItem.sector}
@@ -306,7 +306,7 @@ const Taller = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Persona Encargada</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Persona Encargada</label>
                                 <input
                                     type="text"
                                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -317,7 +317,7 @@ const Taller = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Descripción del Trabajo / Problema</label>
+                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Descripción del Trabajo / Problema</label>
                                 <textarea
                                     className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary min-h-[100px]"
                                     placeholder="Detalle del mantenimiento..."
@@ -328,7 +328,7 @@ const Taller = () => {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
+                                    <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Fecha</label>
                                     <input
                                         type="date"
                                         className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -337,7 +337,7 @@ const Taller = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Estado Inicial</label>
+                                    <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Estado Inicial</label>
                                     <select
                                         className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                                         value={newItem.status}

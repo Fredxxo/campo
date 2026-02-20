@@ -111,7 +111,7 @@ const Layout = ({ children }) => {
             {/* Main Content */}
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
                 {/* Top Header (Mobile) */}
-                <header className="lg:hidden bg-white border-b border-campo-beige-200 h-16 flex items-center px-4 justify-between">
+                <header className="lg:hidden bg-campo-beige-100 border-b border-campo-beige-200 h-16 flex items-center px-4 justify-between">
                     <button onClick={toggleSidebar} className="text-campo-green-700 hover:text-campo-green-900">
                         <Menu size={24} />
                     </button>

@@ -135,7 +135,7 @@ const Dashboard = () => {
             case 'Corte': return 'bg-amber-500';
             case 'Rastrillado': return 'bg-orange-500';
             case 'Enfardado': return 'bg-purple-500';
-            default: return 'bg-slate-400';
+            default: return 'bg-campo-beige-500';
         }
     };
 
@@ -186,22 +186,22 @@ const Dashboard = () => {
                         <div className="space-y-6">
                             {Object.entries(recentActivities).map(([date, activities]) => (
                                 <div key={date}>
-                                    <h3 className="text-sm font-semibold text-slate-500 mb-3 sticky top-0 bg-white py-1">{date}</h3>
-                                    <div className="space-y-3 pl-2 border-l-2 border-slate-100 ml-1">
+                                    <h3 className="text-sm font-semibold text-campo-beige-600 mb-3 sticky top-0 bg-campo-beige-100 py-1">{date}</h3>
+                                    <div className="space-y-3 pl-2 border-l-2 border-campo-beige-200 ml-1">
                                         {activities.map((activity) => (
                                             <div key={activity.id} className="relative pl-4 pb-1 group">
                                                 <div className={`absolute -left-[9px] top-1.5 w-4 h-4 rounded-full border-2 border-white shadow-sm ${getActivityColor(activity.activity)}`}></div>
-                                                <div className="flex justify-between items-start hover:bg-slate-50 p-2 rounded-lg transition-colors -ml-2 -mt-2">
+                                                <div className="flex justify-between items-start hover:bg-campo-beige-50 p-2 rounded-lg transition-colors -ml-2 -mt-2">
                                                     <div>
                                                         <p className="text-sm font-medium text-foreground">
-                                                            <span className="font-bold text-slate-700">{activity.circleName}</span>
-                                                            <span className="mx-2 text-slate-300">|</span>
-                                                            <span className={activity.activity ? 'text-slate-800' : 'text-slate-500 italic'}>
+                                                            <span className="font-bold text-campo-carbon-700">{activity.circleName}</span>
+                                                            <span className="mx-2 text-campo-beige-400">|</span>
+                                                            <span className={activity.activity ? 'text-campo-carbon-800' : 'text-campo-beige-600 italic'}>
                                                                 {activity.activity || "Actualización de estado"}
                                                             </span>
                                                         </p>
                                                         <div className="flex items-center gap-2 mt-1">
-                                                            <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full border border-slate-200">
+                                                            <span className="text-xs px-2 py-0.5 bg-campo-beige-200 text-campo-carbon-600 rounded-full border border-campo-beige-300">
                                                                 {activity.situation}
                                                             </span>
                                                             {activity.alert && (
@@ -222,7 +222,7 @@ const Dashboard = () => {
                                 </div>
                             ))}
                             {Object.keys(recentActivities).length === 0 && (
-                                <p className="text-center text-slate-400 py-8">No hay actividades recientes.</p>
+                                <p className="text-center text-campo-beige-500 py-8">No hay actividades recientes.</p>
                             )}
                         </div>
                     </CardContent>
@@ -230,7 +230,7 @@ const Dashboard = () => {
 
                 <Card className="overflow-hidden border-none shadow-md h-full">
                     {loading ? (
-                        <div className="h-full flex items-center justify-center p-6 bg-slate-100 rounded-xl">
+                        <div className="h-full flex items-center justify-center p-6 bg-campo-beige-200 rounded-xl">
                             <p className="text-muted-foreground">Cargando clima...</p>
                         </div>
                     ) : error ? (
@@ -238,7 +238,7 @@ const Dashboard = () => {
                             <p className="text-red-500">Error al cargar clima</p>
                         </div>
                     ) : (
-                        <div className="bg-gradient-to-br from-sky-500 to-blue-600 h-full p-6 text-white relative min-h-[300px]">
+                        <div className="bg-gradient-to-br from-campo-green-500 to-campo-green-800 h-full p-6 text-white relative min-h-[300px]">
                             <div className="flex items-center justify-between relative z-10">
                                 <div>
                                     <h2 className="text-lg font-bold mb-1">Santa Rosa, Mendoza</h2>
@@ -282,13 +282,13 @@ const Dashboard = () => {
                                     <div
                                         key={index}
                                         className={`flex flex-col items-center p-3 rounded-lg min-w-[80px] ${item.isCurrent
-                                            ? 'bg-blue-100 border-2 border-blue-500'
+                                            ? 'bg-campo-green-100 border-2 border-campo-green-500'
                                             : item.isPast
-                                                ? 'bg-gray-50 opacity-70'
-                                                : 'bg-white border border-gray-100'
+                                                ? 'bg-campo-beige-50 opacity-70'
+                                                : 'bg-campo-beige-100 border border-campo-beige-200'
                                             }`}
                                     >
-                                        <p className="text-xs font-semibold text-gray-500 mb-1">
+                                        <p className="text-xs font-semibold text-campo-beige-600 mb-1">
                                             {formatDay(item.time)}
                                         </p>
                                         <p className="text-sm font-bold mb-2">
@@ -296,10 +296,10 @@ const Dashboard = () => {
                                         </p>
                                         <WeatherIcon
                                             iconName={getWeatherInfo(item.code).icon}
-                                            className={`w-6 h-6 mb-2 ${item.isCurrent ? 'text-blue-600' : 'text-gray-600'}`}
+                                            className={`w-6 h-6 mb-2 ${item.isCurrent ? 'text-campo-green-600' : 'text-campo-carbon-600'}`}
                                         />
                                         <p className="text-lg font-bold">{Math.round(item.temp)}°</p>
-                                        <div className="flex items-center mt-1 space-x-1 text-xs text-gray-500">
+                                        <div className="flex items-center mt-1 space-x-1 text-xs text-campo-beige-600">
                                             <Droplets className="w-3 h-3" />
                                             <span>{item.humidity}%</span>
                                         </div>
