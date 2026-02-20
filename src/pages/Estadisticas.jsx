@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { db } from '../firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { BarChart3, CheckCircle, AlertTriangle, XCircle, Calendar, Package, Scale, LayoutGrid } from 'lucide-react';
+import { BarChart3, CheckCircle, AlertTriangle, XCircle, Calendar, Package, Scale, LayoutGrid, Wrench } from 'lucide-react';
 
 const Estadisticas = () => {
     const [stats, setStats] = useState({});
+    const [tallerStats, setTallerStats] = useState({});
+    const [tallerCategoryStats, setTallerCategoryStats] = useState({});
     const [circleStats, setCircleStats] = useState({});
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'circles'
@@ -24,7 +26,67 @@ const Estadisticas = () => {
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        const unsubscribeTaller = onSnapshot(collection(db, "taller"), (snapshot) => {
+            const tStats = {};
+            const catStats = {};
+
+            snapshot.forEach(doc => {
+                const item = doc.data();
+
+                // 1. Monthly Stats Logic
+                if (item.date) {
+                    const [year, month] = item.date.split('-');
+                    const monthKey = `${year}-${month}`;
+
+                    if (!tStats[monthKey]) {
+                        tStats[monthKey] = {
+                            total: 0,
+                            completed: 0,
+                            pending: 0,
+                            byCategory: {}
+                        };
+                    }
+
+                    tStats[monthKey].total++;
+                    if (item.status === 'Completado') tStats[monthKey].completed++;
+                    else tStats[monthKey].pending++;
+
+                    if (!tStats[monthKey].byCategory[item.category]) {
+                        tStats[monthKey].byCategory[item.category] = 0;
+                    }
+                    tStats[monthKey].byCategory[item.category]++;
+                }
+
+                // 2. Global Category Stats Logic
+                if (item.category) {
+                    if (!catStats[item.category]) {
+                        catStats[item.category] = {
+                            total: 0,
+                            completed: 0,
+                            pending: 0,
+                            events: []
+                        };
+                    }
+                    catStats[item.category].total++;
+                    if (item.status === 'Completado') catStats[item.category].completed++;
+                    else catStats[item.category].pending++;
+
+                    catStats[item.category].events.push({
+                        date: item.date,
+                        description: item.description,
+                        status: item.status,
+                        operator: item.operator
+                    });
+                }
+            });
+            setTallerStats(tStats);
+            setTallerCategoryStats(catStats);
+        });
+
+        return () => {
+            unsubscribe();
+            unsubscribeTaller();
+        };
     }, []);
 
     const processStats = (circlesData) => {
@@ -148,6 +210,12 @@ const Estadisticas = () => {
         setCircleStats(sortedCircleStats);
     };
 
+    // Helper to get all unique months from both stats
+    const getAllMonths = () => {
+        const months = new Set([...Object.keys(stats), ...Object.keys(tallerStats)]);
+        return Array.from(months).sort().reverse();
+    };
+
     const getMonthName = (key) => {
         const [year, month] = key.split('-');
         const date = new Date(year, month - 1);
@@ -178,186 +246,257 @@ const Estadisticas = () => {
                     >
                         <LayoutGrid className="h-4 w-4" /> Por Círculo
                     </button>
+                    <button
+                        onClick={() => setViewMode('taller')}
+                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${viewMode === 'taller' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                    >
+                        <Wrench className="h-4 w-4" /> Taller
+                    </button>
                 </div>
             </div>
 
             {viewMode === 'monthly' ? (
-                Object.keys(stats).length === 0 ? (
+                getAllMonths().length === 0 ? (
                     <div className="text-center p-12 bg-white rounded-xl shadow-sm border border-slate-100">
                         <BarChart3 className="mx-auto h-12 w-12 text-slate-300 mb-4" />
                         <h3 className="text-lg font-medium text-slate-900">No hay datos suficientes</h3>
-                        <p className="text-slate-500 mt-2">Registra actividades de "Corte" o "Enfardado" para ver estadísticas.</p>
+                        <h3 className="text-lg font-medium text-slate-900">No hay datos suficientes</h3>
+                        <p className="text-slate-500 mt-2">Registra actividades para ver estadísticas.</p>
                     </div>
                 ) : (
                     <div className="space-y-12">
-                        {Object.entries(stats).map(([monthKey, data]) => (
-                            <div key={monthKey} className="space-y-6">
-                                <div className="flex items-center gap-3 border-b border-slate-200 pb-2">
-                                    <Calendar className="h-6 w-6 text-indigo-600" />
-                                    <h2 className="text-2xl font-bold text-slate-800">
-                                        {getMonthName(monthKey).charAt(0).toUpperCase() + getMonthName(monthKey).slice(1)}
-                                    </h2>
-                                </div>
+                        {getAllMonths().map((monthKey) => {
+                            const data = stats[monthKey] || { production: { details: [], byQuality: {}, totalQuantity: 0, totalWeight: 0 }, total: 0, details: [] };
+                            const tData = tallerStats[monthKey];
 
-                                {/* Section: Producción (Enfardado) */}
-                                {data.production.details.length > 0 && (
-                                    <div className="space-y-4">
-                                        <h3 className="text-lg font-semibold text-slate-600 flex items-center gap-2">
-                                            <Package className="h-5 w-5" /> Producción de Rollos/Fardos
-                                        </h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <Card className="bg-indigo-50/50 border-indigo-100">
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm font-medium text-indigo-600 flex items-center gap-2">
-                                                        <Package className="h-4 w-4" />
-                                                        Total Unidades
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="text-3xl font-bold text-indigo-700">{data.production.totalQuantity}</div>
-                                                    <p className="text-xs text-indigo-600 mt-1">Rollos / Fardos</p>
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card className="bg-blue-50/50 border-blue-100">
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm font-medium text-blue-600 flex items-center gap-2">
-                                                        <Scale className="h-4 w-4" />
-                                                        Total Kilos
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="text-3xl font-bold text-blue-700">{data.production.totalWeight.toLocaleString('es-AR')}</div>
-                                                    <p className="text-xs text-blue-600 mt-1">Kg Totales</p>
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-
-                                        {/* Breakdown by Quality */}
-                                        {Object.keys(data.production.byQuality || {}).length > 0 && (
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                                                {Object.entries(data.production.byQuality).map(([quality, qData]) => (
-                                                    <div key={quality} className="bg-slate-50 rounded-lg p-3 border border-slate-100 flex flex-col">
-                                                        <span className="text-xs font-bold text-slate-500 uppercase mb-1">{quality}</span>
-                                                        <span className="text-lg font-bold text-slate-800">{qData.quantity} <span className="text-xs font-normal text-slate-400">un.</span></span>
-                                                        <span className="text-xs text-slate-500">{qData.weight.toLocaleString('es-AR')} kg</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-
-                                        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-                                            <table className="w-full text-sm text-left">
-                                                <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
-                                                    <tr>
-                                                        <th className="px-4 py-3 font-medium">Círculo</th>
-                                                        <th className="px-4 py-3 font-medium">Fecha</th>
-                                                        <th className="px-4 py-3 font-medium text-left">Calidad</th>
-                                                        <th className="px-4 py-3 font-medium text-right">Cantidad</th>
-                                                        <th className="px-4 py-3 font-medium text-right">Kilos</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {data.production.details.map((item, idx) => (
-                                                        <tr key={idx} className="hover:bg-slate-50">
-                                                            <td className="px-4 py-3 font-medium text-slate-700">{item.circle}</td>
-                                                            <td className="px-4 py-3 text-slate-500">{item.date}</td>
-                                                            <td className="px-4 py-3 text-left text-slate-600"><span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-200">{item.quality || '-'}</span></td>
-                                                            <td className="px-4 py-3 text-right font-mono text-slate-700">{item.quantity}</td>
-                                                            <td className="px-4 py-3 text-right font-mono text-slate-700">{item.weight} kg</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
+                            return (
+                                <div key={monthKey} className="space-y-6">
+                                    <div className="flex items-center gap-3 border-b border-slate-200 pb-2">
+                                        <Calendar className="h-6 w-6 text-indigo-600" />
+                                        <h2 className="text-2xl font-bold text-slate-800">
+                                            {getMonthName(monthKey).charAt(0).toUpperCase() + getMonthName(monthKey).slice(1)}
+                                        </h2>
                                     </div>
-                                )}
 
-                                {/* Section: Cortes Efficiency */}
-                                {data.total > 0 && (
-                                    <div className="space-y-4 pt-4 border-t border-slate-100 mt-8">
-                                        <h3 className="text-lg font-semibold text-slate-600 flex items-center gap-2">
-                                            <CheckCircle className="h-5 w-5" /> Eficiencia de Cortes
-                                        </h3>
+                                    {/* Section: Producción (Enfardado) */}
+                                    {data.production.details.length > 0 && (
+                                        <div className="space-y-4">
+                                            <h3 className="text-lg font-semibold text-slate-600 flex items-center gap-2">
+                                                <Package className="h-5 w-5" /> Producción de Rollos/Fardos
+                                            </h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <Card className="bg-indigo-50/50 border-indigo-100">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-indigo-600 flex items-center gap-2">
+                                                            <Package className="h-4 w-4" />
+                                                            Total Unidades
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-3xl font-bold text-indigo-700">{data.production.totalQuantity}</div>
+                                                        <p className="text-xs text-indigo-600 mt-1">Rollos / Fardos</p>
+                                                    </CardContent>
+                                                </Card>
 
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                            <Card className="bg-emerald-50/50 border-emerald-100">
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm font-medium text-emerald-600 flex items-center gap-2">
-                                                        <CheckCircle className="h-4 w-4" />
-                                                        A Tiempo
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="text-2xl font-bold text-emerald-700">{data.listo}</div>
-                                                    <p className="text-xs text-emerald-600 mt-1">
-                                                        {((data.listo / data.total) * 100).toFixed(0)}% del total
-                                                    </p>
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card className="bg-amber-50/50 border-amber-100">
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm font-medium text-amber-600 flex items-center gap-2">
-                                                        <AlertTriangle className="h-4 w-4" />
-                                                        Urgente
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="text-2xl font-bold text-amber-700">{data.urgente}</div>
-                                                    <p className="text-xs text-amber-600 mt-1">
-                                                        {((data.urgente / data.total) * 100).toFixed(0)}% del total
-                                                    </p>
-                                                </CardContent>
-                                            </Card>
-
-                                            <Card className="bg-red-50/50 border-red-100">
-                                                <CardHeader className="pb-2">
-                                                    <CardTitle className="text-sm font-medium text-red-600 flex items-center gap-2">
-                                                        <XCircle className="h-4 w-4" />
-                                                        Pasado
-                                                    </CardTitle>
-                                                </CardHeader>
-                                                <CardContent>
-                                                    <div className="text-2xl font-bold text-red-700">{data.pasado}</div>
-                                                    <p className="text-xs text-red-600 mt-1">
-                                                        {((data.pasado / data.total) * 100).toFixed(0)}% del total
-                                                    </p>
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-
-                                        {/* Optional: Detailed list */}
-                                        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-                                            <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                                                Detalle de cortes ({data.total})
+                                                <Card className="bg-blue-50/50 border-blue-100">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-blue-600 flex items-center gap-2">
+                                                            <Scale className="h-4 w-4" />
+                                                            Total Kilos
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-3xl font-bold text-blue-700">{data.production.totalWeight.toLocaleString('es-AR')}</div>
+                                                        <p className="text-xs text-blue-600 mt-1">Kg Totales</p>
+                                                    </CardContent>
+                                                </Card>
                                             </div>
-                                            <div className="divide-y divide-slate-100">
-                                                {data.details.map((detail, idx) => (
-                                                    <div key={idx} className="px-4 py-3 flex justify-between items-center text-sm hover:bg-slate-50">
-                                                        <div className="font-medium text-slate-700">{detail.circle}</div>
-                                                        <div className="flex items-center gap-4">
-                                                            <span className="text-slate-500 text-xs">{detail.date}</span>
-                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${detail.status === 'A tiempo' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
-                                                                detail.status === 'Urgente' ? 'bg-amber-100 text-amber-700 border-amber-200' :
-                                                                    detail.status === 'Pasado' ? 'bg-red-100 text-red-700 border-red-200' :
-                                                                        'bg-slate-100 text-slate-600 border-slate-200'
-                                                                }`}>
-                                                                {detail.status}
-                                                            </span>
+
+                                            {/* Breakdown by Quality */}
+                                            {Object.keys(data.production.byQuality || {}).length > 0 && (
+                                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                                    {Object.entries(data.production.byQuality).map(([quality, qData]) => (
+                                                        <div key={quality} className="bg-slate-50 rounded-lg p-3 border border-slate-100 flex flex-col">
+                                                            <span className="text-xs font-bold text-slate-500 uppercase mb-1">{quality}</span>
+                                                            <span className="text-lg font-bold text-slate-800">{qData.quantity} <span className="text-xs font-normal text-slate-400">un.</span></span>
+                                                            <span className="text-xs text-slate-500">{qData.weight.toLocaleString('es-AR')} kg</span>
                                                         </div>
-                                                    </div>
-                                                ))}
+                                                    ))}
+                                                </div>
+                                            )}
+
+
+                                            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                                                <table className="w-full text-sm text-left">
+                                                    <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
+                                                        <tr>
+                                                            <th className="px-4 py-3 font-medium">Círculo</th>
+                                                            <th className="px-4 py-3 font-medium">Fecha</th>
+                                                            <th className="px-4 py-3 font-medium text-left">Calidad</th>
+                                                            <th className="px-4 py-3 font-medium text-right">Cantidad</th>
+                                                            <th className="px-4 py-3 font-medium text-right">Kilos</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {data.production.details.map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50">
+                                                                <td className="px-4 py-3 font-medium text-slate-700">{item.circle}</td>
+                                                                <td className="px-4 py-3 text-slate-500">{item.date}</td>
+                                                                <td className="px-4 py-3 text-left text-slate-600"><span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-200">{item.quality || '-'}</span></td>
+                                                                <td className="px-4 py-3 text-right font-mono text-slate-700">{item.quantity}</td>
+                                                                <td className="px-4 py-3 text-right font-mono text-slate-700">{item.weight} kg</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         </div>
-                                    </div>
-                                )}
-                            </div>
-                        ))}
+                                    )}
+
+                                    {/* Section: Cortes Efficiency */}
+                                    {data.total > 0 && (
+                                        <div className="space-y-4 pt-4 border-t border-slate-100 mt-8">
+                                            <h3 className="text-lg font-semibold text-slate-600 flex items-center gap-2">
+                                                <CheckCircle className="h-5 w-5" /> Eficiencia de Cortes
+                                            </h3>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <Card className="bg-emerald-50/50 border-emerald-100">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-emerald-600 flex items-center gap-2">
+                                                            <CheckCircle className="h-4 w-4" />
+                                                            A Tiempo
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-2xl font-bold text-emerald-700">{data.listo}</div>
+                                                        <p className="text-xs text-emerald-600 mt-1">
+                                                            {((data.listo / data.total) * 100).toFixed(0)}% del total
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+
+                                                <Card className="bg-amber-50/50 border-amber-100">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-amber-600 flex items-center gap-2">
+                                                            <AlertTriangle className="h-4 w-4" />
+                                                            Urgente
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-2xl font-bold text-amber-700">{data.urgente}</div>
+                                                        <p className="text-xs text-amber-600 mt-1">
+                                                            {((data.urgente / data.total) * 100).toFixed(0)}% del total
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+
+                                                <Card className="bg-red-50/50 border-red-100">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-red-600 flex items-center gap-2">
+                                                            <XCircle className="h-4 w-4" />
+                                                            Pasado
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-2xl font-bold text-red-700">{data.pasado}</div>
+                                                        <p className="text-xs text-red-600 mt-1">
+                                                            {((data.pasado / data.total) * 100).toFixed(0)}% del total
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
+
+                                            {/* Optional: Detailed list */}
+                                            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                                                    Detalle de cortes ({data.total})
+                                                </div>
+                                                <div className="divide-y divide-slate-100">
+                                                    {data.details.map((detail, idx) => (
+                                                        <div key={idx} className="px-4 py-3 flex justify-between items-center text-sm hover:bg-slate-50">
+                                                            <div className="font-medium text-slate-700">{detail.circle}</div>
+                                                            <div className="flex items-center gap-4">
+                                                                <span className="text-slate-500 text-xs">{detail.date}</span>
+                                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${detail.status === 'A tiempo' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+                                                                    detail.status === 'Urgente' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                                                        detail.status === 'Pasado' ? 'bg-red-100 text-red-700 border-red-200' :
+                                                                            'bg-slate-100 text-slate-600 border-slate-200'
+                                                                    }`}>
+                                                                    {detail.status}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Section: Taller Statistics */}
+                                    {tData && (
+                                        <div className="space-y-4 pt-4 border-t border-slate-100 mt-8">
+                                            <h3 className="text-lg font-semibold text-slate-600 flex items-center gap-2">
+                                                <Wrench className="h-5 w-5" /> Mantenimiento (Taller)
+                                            </h3>
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <Card className="bg-slate-50/50 border-slate-200">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-slate-600 flex items-center gap-2">
+                                                            <Wrench className="h-4 w-4" />
+                                                            Total Entradas
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-2xl font-bold text-slate-700">{tData.total}</div>
+                                                        <p className="text-xs text-slate-500 mt-1">
+                                                            Mantenimientos registrados
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+
+                                                <Card className="bg-amber-50/50 border-amber-100">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-amber-600 flex items-center gap-2">
+                                                            <AlertTriangle className="h-4 w-4" />
+                                                            Pendientes
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-2xl font-bold text-amber-700">{tData.pending}</div>
+                                                        <p className="text-xs text-amber-600 mt-1">
+                                                            En proceso o espera
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+
+                                                <Card className="bg-emerald-50/50 border-emerald-100">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-emerald-600 flex items-center gap-2">
+                                                            <CheckCircle className="h-4 w-4" />
+                                                            Completados
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-2xl font-bold text-emerald-700">{tData.completed}</div>
+                                                        <p className="text-xs text-emerald-600 mt-1">
+                                                            Finalizados exitosamente
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
+                                            </div>
+
+                                            {/* Breakdown by Category */}
+
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 )
-            ) : (
+            ) : viewMode === 'circles' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     {Object.keys(circleStats).length === 0 ? (
                         <div className="col-span-full text-center p-12 bg-white rounded-xl shadow-sm border border-slate-100">
@@ -401,6 +540,60 @@ const Estadisticas = () => {
                                                         <span>{event.quantity} u.</span>
                                                         <span>{event.weight} kg</span>
                                                     </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))
+                    )}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {Object.keys(tallerCategoryStats).length === 0 ? (
+                        <div className="col-span-full text-center p-12 bg-white rounded-xl shadow-sm border border-slate-100">
+                            <Wrench className="mx-auto h-12 w-12 text-slate-300 mb-4" />
+                            <h3 className="text-lg font-medium text-slate-900">No hay datos de taller</h3>
+                            <p className="text-slate-500 mt-2">Registra mantenimientos en Taller para ver las estadísticas.</p>
+                        </div>
+                    ) : (
+                        Object.entries(tallerCategoryStats).map(([category, cData]) => (
+                            <Card key={category} className="hover:shadow-md transition-shadow">
+                                <CardHeader className="pb-3 border-b border-slate-100">
+                                    <div className="flex justify-between items-center">
+                                        <CardTitle className="text-lg font-bold text-slate-800">{category}</CardTitle>
+                                        <span className="text-xs font-medium bg-indigo-50 text-indigo-700 px-2 py-1 rounded-full border border-indigo-100">
+                                            {cData.total} {cData.total === 1 ? 'Entrada' : 'Entradas'}
+                                        </span>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="pt-4 space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-xs text-slate-500 mb-1">Pendientes</p>
+                                            <p className="text-xl font-bold text-amber-600">{cData.pending}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-slate-500 mb-1">Completados</p>
+                                            <p className="text-xl font-bold text-emerald-600">{cData.completed}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t border-slate-100 pt-3">
+                                        <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Historial Reciente</p>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                            {cData.events.sort((a, b) => new Date(b.date) - new Date(a.date)).map((event, idx) => (
+                                                <div key={idx} className="flex flex-col text-sm p-2 bg-slate-50 rounded-md">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className="text-[10px] text-slate-400">{event.date}</span>
+                                                        {event.status === 'Pendiente' ?
+                                                            <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full">Pdte</span> :
+                                                            <span className="text-[10px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">Ok</span>
+                                                        }
+                                                    </div>
+                                                    <span className="text-slate-700 font-medium truncate">{event.description}</span>
+                                                    {event.operator && <span className="text-xs text-slate-500 mt-0.5">{event.operator}</span>}
                                                 </div>
                                             ))}
                                         </div>
