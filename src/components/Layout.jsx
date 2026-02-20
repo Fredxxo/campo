@@ -1,21 +1,47 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Circle, Wrench, Droplets, DollarSign, Menu, X, BarChart3 } from 'lucide-react';
+import { Home, Circle, Wrench, Droplets, DollarSign, Menu, X, BarChart3, LogOut, ShieldCheck } from 'lucide-react';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebase';
+import useRole from '../hooks/useRole';
+import { ROLE_ROUTES } from './PrivateRoute';
+
+const ALL_NAVIGATION = [
+    { name: 'Dashboard', href: '/', icon: Home },
+    { name: 'Círculos', href: '/circulos', icon: Circle },
+    { name: 'Taller', href: '/taller', icon: Wrench },
+    { name: 'Riego', href: '/riego', icon: Droplets },
+    { name: 'Ventas', href: '/ventas', icon: DollarSign },
+    { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
+    { name: 'Administración', href: '/admin', icon: ShieldCheck },
+];
+
+const ROLE_LABELS = {
+    admin: 'Administrador',
+    circulos: 'Círculos',
+    taller: 'Taller',
+    riego: 'Riego',
+    ventas: 'Ventas',
+};
 
 const Layout = ({ children }) => {
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const location = useLocation();
+    const { user, role } = useRole();
 
-    const navigation = [
-        { name: 'Dashboard', href: '/', icon: Home },
-        { name: 'Círculos', href: '/circulos', icon: Circle },
-        { name: 'Taller', href: '/taller', icon: Wrench },
-        { name: 'Riego', href: '/riego', icon: Droplets },
-        { name: 'Ventas', href: '/ventas', icon: DollarSign },
-        { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
-    ];
+    const allowedRoutes = ROLE_ROUTES[role] || [];
+    const navigation = ALL_NAVIGATION.filter((item) => allowedRoutes.includes(item.href));
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+    const handleLogout = async () => {
+        await signOut(auth);
+    };
+
+    // Iniciales del usuario
+    const initials = user?.displayName
+        ? user.displayName.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+        : user?.email?.[0]?.toUpperCase() || '?';
 
     return (
         <div className="min-h-screen bg-campo-beige-50 flex">
@@ -60,13 +86,24 @@ const Layout = ({ children }) => {
 
                 <div className="absolute bottom-0 w-full p-4 border-t border-campo-green-800">
                     <div className="flex items-center gap-3 px-2">
-                        <div className="w-8 h-8 rounded-full bg-campo-green-600 flex items-center justify-center text-white font-bold border border-campo-green-500">
-                            A
+                        <div className="w-8 h-8 rounded-full bg-campo-green-600 flex items-center justify-center text-white font-bold text-sm border border-campo-green-500 shrink-0">
+                            {initials}
                         </div>
-                        <div className="text-sm">
-                            <p className="font-medium text-white">Admin</p>
-                            <p className="text-campo-beige-400 text-xs">admin@campo.com</p>
+                        <div className="text-sm flex-1 min-w-0">
+                            <p className="font-medium text-white truncate">
+                                {user?.displayName || user?.email?.split('@')[0] || 'Usuario'}
+                            </p>
+                            <p className="text-campo-beige-400 text-xs">
+                                {ROLE_LABELS[role] || 'Sin rol'}
+                            </p>
                         </div>
+                        <button
+                            onClick={handleLogout}
+                            title="Cerrar sesión"
+                            className="text-campo-beige-400 hover:text-white transition-colors shrink-0"
+                        >
+                            <LogOut size={16} />
+                        </button>
                     </div>
                 </div>
             </aside>
@@ -93,4 +130,3 @@ const Layout = ({ children }) => {
 };
 
 export default Layout;
-

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { auth, googleProvider } from '../firebase';
+import { auth, googleProvider, db } from '../firebase';
 import { signInWithPopup } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 
@@ -10,7 +11,22 @@ const Login = () => {
 
     const handleGoogleSignIn = async () => {
         try {
-            await signInWithPopup(auth, googleProvider);
+            const result = await signInWithPopup(auth, googleProvider);
+            const user = result.user;
+
+            // Registrar usuario en Firestore (merge:true preserva el rol existente)
+            await setDoc(
+                doc(db, 'usuarios', user.uid),
+                {
+                    uid: user.uid,
+                    email: user.email,
+                    displayName: user.displayName,
+                    photoURL: user.photoURL,
+                    lastLogin: serverTimestamp(),
+                },
+                { merge: true }
+            );
+
             navigate('/');
         } catch (err) {
             console.error("Error logging in:", err);
