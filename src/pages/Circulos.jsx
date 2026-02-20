@@ -224,9 +224,10 @@ const Circulos = () => {
             activity: changes.activity !== undefined ? changes.activity : currentItem.activity,
             situation: changes.situation !== undefined ? changes.situation : currentItem.situation,
             alert: changes.alert !== undefined ? changes.alert : currentItem.alert,
-            quantity: changes.quantity || null, // Capture quantity
-            weight: changes.weight || null, // Capture weight
-            quality: changes.quality || null, // Capture quality
+            machinery: changes.machinery !== undefined ? changes.machinery : (changes.activity !== undefined ? null : currentItem.machinery),
+            quantity: changes.quantity || currentItem.quantity || null,
+            weight: changes.weight || currentItem.weight || null,
+            quality: changes.quality || currentItem.quality || null,
             startDate: now,
             endDate: null
         });
@@ -253,11 +254,6 @@ const Circulos = () => {
                 alert("Solo se puede Enfardar después de Rastrillar.");
                 return;
             }
-            // INTERCEPT: Open Modal for Enfardado
-            setPendingEnfardadoCircle(circuloName);
-            setEnfardadoData({ quantity: '', weight: '', quality: '' });
-            setIsEnfardadoModalOpen(true);
-            return; // Stop here, wait for modal confirmation
         }
 
         const newHistory = calculateNewHistory(currentHistory, {
@@ -266,6 +262,23 @@ const Circulos = () => {
             alert: currentStatus // Sync alert field with current status
         });
         updateCircleData(circuloName, { history: newHistory });
+    };
+
+    const handleMachineryChange = (circuloName, newMachinery) => {
+        const currentHistory = history[circuloName] || [];
+        if (currentHistory.length === 0) return;
+
+        const list = [...currentHistory];
+        const lastIndex = list.length - 1;
+
+        // Update the current activity's machinery in-place
+        list[lastIndex] = { ...list[lastIndex], machinery: newMachinery };
+
+        if (newMachinery && list[lastIndex].activity && list[lastIndex].activity !== 'En crecimiento') {
+            list[lastIndex].situation = 'En Proceso';
+        }
+
+        updateCircleData(circuloName, { history: list });
     };
 
     const confirmEnfardado = () => {
@@ -280,8 +293,7 @@ const Circulos = () => {
         const currentStatus = getCurrentStatus(circuloName);
 
         const newHistory = calculateNewHistory(currentHistory, {
-            activity: 'Enfardado',
-            situation: 'Iniciado',
+            situation: 'Finalizado',
             alert: currentStatus,
             quantity: enfardadoData.quantity,
             weight: enfardadoData.weight,
@@ -333,6 +345,15 @@ const Circulos = () => {
 
     const handleSituationChange = (circuloName, newSituation) => {
         const currentHistory = history[circuloName] || [];
+        const lastItem = currentHistory[currentHistory.length - 1];
+
+        if (newSituation === 'Finalizado' && lastItem && lastItem.activity === 'Enfardado') {
+            setPendingEnfardadoCircle(circuloName);
+            setEnfardadoData({ quantity: '', weight: '', quality: '' });
+            setIsEnfardadoModalOpen(true);
+            return;
+        }
+
         const newHistory = calculateNewHistory(currentHistory, { situation: newSituation });
         updateCircleData(circuloName, { history: newHistory });
     };
@@ -368,6 +389,7 @@ const Circulos = () => {
 
     const getActivityColor = (activity) => {
         switch (activity) {
+            case 'En crecimiento': return 'text-campo-green-700 bg-campo-green-50 border-campo-green-200';
             case 'Corte': return 'text-amber-600 bg-amber-50 border-amber-200';
             case 'Rastrillado': return 'text-orange-600 bg-orange-50 border-orange-200';
             case 'Enfardado': return 'text-purple-600 bg-purple-50 border-purple-200';
@@ -415,6 +437,11 @@ const Circulos = () => {
                     const currentState = getCurrentState(circulo.name);
                     const currentStatus = getCurrentStatus(circulo.name);
                     const irrigatingPivot = activePivots[circulo.name]; // pivot name if this circle is being irrigated
+
+                    const isLogisticaEnabled =
+                        ['Listo para cortar', 'Cortar urgente', 'Pasado'].includes(currentStatus) ||
+                        (currentState.activity === 'Enfardado' && currentState.situation === 'Finalizado') ||
+                        !currentState.activity;
 
                     const activityColorClass = getActivityColor(currentState.activity);
                     const cardColorClass = irrigatingPivot ? 'border-campo-green-400 ring-1 ring-campo-green-400 bg-campo-green-50/30' : getStatusColor(currentStatus);
@@ -511,9 +538,30 @@ const Circulos = () => {
                                             onClick={(e) => e.stopPropagation()}
                                         >
                                             <option value="">Seleccionar...</option>
-                                            <option value="Corte">Corte</option>
-                                            <option value="Rastrillado">Rastrillado</option>
-                                            <option value="Enfardado">Enfardado</option>
+                                            <option value="En crecimiento">En crecimiento</option>
+                                            <option value="Corte" disabled={!isLogisticaEnabled}>Corte</option>
+                                            <option value="Rastrillado" disabled={!isLogisticaEnabled}>Rastrillado</option>
+                                            <option value="Enfardado" disabled={!isLogisticaEnabled}>Enfardado</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-medium text-campo-beige-600 block mb-1">Maquinaria</label>
+                                        <select
+                                            className="w-full text-xs border-campo-beige-300 rounded-md p-2 bg-campo-beige-50 focus:ring-2 focus:ring-campo-green-500 focus:border-campo-green-500 transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                                            value={currentState.machinery || ''}
+                                            onChange={(e) => handleMachineryChange(circulo.name, e.target.value)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            disabled={!currentState.activity || currentState.activity === 'En crecimiento'}
+                                        >
+                                            <option value="">Sin asignar</option>
+                                            <option value="Tractor">Tractor</option>
+                                            <option value="Segadora">Segadora</option>
+                                            <option value="Rastrillo">Rastrillo</option>
+                                            <option value="Megaenfardadora">Megaenfardadora</option>
+                                            <option value="Megaenrolladora">Megaenrolladora</option>
+                                            <option value="Mosquito">Mosquito</option>
+                                            <option value="Zampi">Zampi</option>
                                         </select>
                                     </div>
 
@@ -538,270 +586,283 @@ const Circulos = () => {
             </div>
 
             {/* Modal para Agregar Círculo */}
-            {isAddModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsAddModalOpen(false)}>
-                    <div
-                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
-                            <h2 className="text-xl font-bold text-campo-carbon-800">Nuevo Círculo</h2>
-                            <Button variant="ghost" size="icon" onClick={() => setIsAddModalOpen(false)}>
-                                <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
-                            </Button>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Nombre / Número del Círculo</label>
-                                <input
-                                    type="text"
-                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    placeholder="Ej: 17 sur, 5(3)"
-                                    value={newCircleName}
-                                    onChange={(e) => setNewCircleName(e.target.value)}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Hectáreas (Opcional)</label>
-                                <input
-                                    type="number"
-                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    placeholder="0"
-                                    value={newCircleHectares}
-                                    onChange={(e) => setNewCircleHectares(e.target.value)}
-                                />
-                            </div>
-
-                            <div className="pt-4 flex justify-end gap-2">
-                                <Button variant="ghost" onClick={() => setIsAddModalOpen(false)}>Cancelar</Button>
-                                <Button onClick={handleAddCircle} disabled={!newCircleName.trim()}>Guardar</Button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal de Enfardado Data Entry */}
-            {isEnfardadoModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsEnfardadoModalOpen(false)}>
-                    <div
-                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
-                            <h2 className="text-xl font-bold text-campo-carbon-800">Datos de Enfardado</h2>
-                            <Button variant="ghost" size="icon" onClick={() => setIsEnfardadoModalOpen(false)}>
-                                <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
-                            </Button>
-                        </div>
-
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Cantidad (Unidades)</label>
-                                <input
-                                    type="number"
-                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
-                                    placeholder="Ej: 150"
-                                    value={enfardadoData.quantity}
-                                    onChange={(e) => setEnfardadoData({ ...enfardadoData, quantity: e.target.value })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Peso Total (Kg)</label>
-                                <input
-                                    type="number"
-                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
-                                    placeholder="Ej: 4500"
-                                    value={enfardadoData.weight}
-                                    onChange={(e) => setEnfardadoData({ ...enfardadoData, weight: e.target.value })}
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Calidad</label>
-                                <select
-                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
-                                    value={enfardadoData.quality}
-                                    onChange={(e) => setEnfardadoData({ ...enfardadoData, quality: e.target.value })}
-                                >
-                                    <option value="">Seleccionar Calidad...</option>
-                                    <option value="Premium">Premium</option>
-                                    <option value="Primera">Primera</option>
-                                    <option value="Segunda">Segunda</option>
-                                    <option value="Tercera">Tercera</option>
-                                    <option value="Descarte">Descarte</option>
-                                </select>
-                            </div>
-
-                            <div className="pt-4 flex justify-end gap-2">
-                                <Button variant="ghost" onClick={() => setIsEnfardadoModalOpen(false)}>Cancelar</Button>
-                                <Button
-                                    className="bg-campo-green-600 hover:bg-campo-green-700 text-white"
-                                    onClick={confirmEnfardado}
-                                    disabled={!enfardadoData.quantity || !enfardadoData.weight || !enfardadoData.quality}
-                                >
-                                    Confirmar
+            {
+                isAddModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsAddModalOpen(false)}>
+                        <div
+                            className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
+                                <h2 className="text-xl font-bold text-campo-carbon-800">Nuevo Círculo</h2>
+                                <Button variant="ghost" size="icon" onClick={() => setIsAddModalOpen(false)}>
+                                    <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
                                 </Button>
                             </div>
+
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Nombre / Número del Círculo</label>
+                                    <input
+                                        type="text"
+                                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        placeholder="Ej: 17 sur, 5(3)"
+                                        value={newCircleName}
+                                        onChange={(e) => setNewCircleName(e.target.value)}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Hectáreas (Opcional)</label>
+                                    <input
+                                        type="number"
+                                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                        placeholder="0"
+                                        value={newCircleHectares}
+                                        onChange={(e) => setNewCircleHectares(e.target.value)}
+                                    />
+                                </div>
+
+                                <div className="pt-4 flex justify-end gap-2">
+                                    <Button variant="ghost" onClick={() => setIsAddModalOpen(false)}>Cancelar</Button>
+                                    <Button onClick={handleAddCircle} disabled={!newCircleName.trim()}>Guardar</Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
+
+            {/* Modal de Enfardado Data Entry */}
+            {
+                isEnfardadoModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsEnfardadoModalOpen(false)}>
+                        <div
+                            className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
+                                <h2 className="text-xl font-bold text-campo-carbon-800">Datos de Enfardado</h2>
+                                <Button variant="ghost" size="icon" onClick={() => setIsEnfardadoModalOpen(false)}>
+                                    <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
+                                </Button>
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Cantidad (Unidades)</label>
+                                    <input
+                                        type="number"
+                                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
+                                        placeholder="Ej: 150"
+                                        value={enfardadoData.quantity}
+                                        onChange={(e) => setEnfardadoData({ ...enfardadoData, quantity: e.target.value })}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Peso Total (Kg)</label>
+                                    <input
+                                        type="number"
+                                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
+                                        placeholder="Ej: 4500"
+                                        value={enfardadoData.weight}
+                                        onChange={(e) => setEnfardadoData({ ...enfardadoData, weight: e.target.value })}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-campo-carbon-700 mb-1">Calidad</label>
+                                    <select
+                                        className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-campo-green-500"
+                                        value={enfardadoData.quality}
+                                        onChange={(e) => setEnfardadoData({ ...enfardadoData, quality: e.target.value })}
+                                    >
+                                        <option value="">Seleccionar Calidad...</option>
+                                        <option value="Premium">Premium</option>
+                                        <option value="Primera">Primera</option>
+                                        <option value="Segunda">Segunda</option>
+                                        <option value="Tercera">Tercera</option>
+                                        <option value="Descarte">Descarte</option>
+                                    </select>
+                                </div>
+
+                                <div className="pt-4 flex justify-end gap-2">
+                                    <Button variant="ghost" onClick={() => setIsEnfardadoModalOpen(false)}>Cancelar</Button>
+                                    <Button
+                                        className="bg-campo-green-600 hover:bg-campo-green-700 text-white"
+                                        onClick={confirmEnfardado}
+                                        disabled={!enfardadoData.quantity || !enfardadoData.weight || !enfardadoData.quality}
+                                    >
+                                        Confirmar
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
 
             {/* Modal de Confirmación de Eliminación */}
-            {deleteConfirmation.isOpen && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirmation({ isOpen: false, circleName: null })}>
-                    <div
-                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="p-6 text-center">
-                            <div className="bg-red-50 text-red-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <Trash2 className="h-8 w-8" />
-                            </div>
-                            <h2 className="text-xl font-bold text-campo-carbon-800 mb-2">¿Eliminar Círculo?</h2>
-                            <p className="text-sm text-campo-carbon-600 mb-6">
-                                ¿Estás seguro que deseas eliminar <span className="font-bold text-campo-carbon-800">{deleteConfirmation.circleName}</span>? Esta acción no se puede deshacer fácilmente.
-                            </p>
+            {
+                deleteConfirmation.isOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirmation({ isOpen: false, circleName: null })}>
+                        <div
+                            className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-6 text-center">
+                                <div className="bg-red-50 text-red-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <Trash2 className="h-8 w-8" />
+                                </div>
+                                <h2 className="text-xl font-bold text-campo-carbon-800 mb-2">¿Eliminar Círculo?</h2>
+                                <p className="text-sm text-campo-carbon-600 mb-6">
+                                    ¿Estás seguro que deseas eliminar <span className="font-bold text-campo-carbon-800">{deleteConfirmation.circleName}</span>? Esta acción no se puede deshacer fácilmente.
+                                </p>
 
-                            <div className="flex gap-3 justify-center">
-                                <Button variant="ghost" onClick={() => setDeleteConfirmation({ isOpen: false, circleName: null })}>Cancelar</Button>
-                                <Button className="bg-red-600 hover:bg-red-700 text-white border-red-600" onClick={handleDeleteCircle}>Si, Eliminar</Button>
+                                <div className="flex gap-3 justify-center">
+                                    <Button variant="ghost" onClick={() => setDeleteConfirmation({ isOpen: false, circleName: null })}>Cancelar</Button>
+                                    <Button className="bg-red-600 hover:bg-red-700 text-white border-red-600" onClick={handleDeleteCircle}>Si, Eliminar</Button>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* History Modal / Overlay */}
-            {selectedCircle && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedCircle(null)}>
-                    <div
-                        className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
-                            <div>
-                                <h2 className="text-xl font-bold text-campo-carbon-800">Historial de Actividades</h2>
-                                <p className="text-sm text-campo-beige-600">Círculo: {selectedCircle}</p>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={() => setSelectedCircle(null)}>
-                                <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
-                            </Button>
-                        </div>
-
-                        <div className="flex-1 overflow-auto p-0">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 h-full">
-                                {/* Activity History Column */}
-                                <div className="p-6 border-r border-campo-beige-200 overflow-y-auto">
-                                    <h3 className="text-sm font-bold text-campo-beige-600 uppercase tracking-wider mb-6">Actividades</h3>
-                                    <div className="relative border-l-2 border-campo-beige-300 ml-3 space-y-8 pl-6 py-2">
-                                        {(history[selectedCircle] || []).slice().reverse().map((item, idx) => (
-                                            <div key={item.id} className="relative group">
-                                                <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-campo-beige-100 shadow-sm ${getActivityColor(item.activity).split(' ')[1] || 'bg-campo-beige-400'}`}></div>
-
-                                                <div className="bg-campo-beige-50 rounded-lg p-4 border border-campo-beige-200 hover:border-campo-beige-400 transition-colors relative">
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <div className="flex flex-col gap-1">
-                                                            <h3 className={`font-bold text-sm px-2 py-0.5 rounded-md w-fit ${getActivityColor(item.activity)}`}>
-                                                                {item.activity || 'Sin actividad'}
-                                                            </h3>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${getSituationBadgeColor(item.situation)}`}>
-                                                                {item.situation}
-                                                            </span>
-                                                            <button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    deleteHistoryItem(selectedCircle, item.id, 'activity');
-                                                                }}
-                                                                className="text-campo-beige-500 hover:text-red-500 transition-colors p-1"
-                                                                title="Eliminar registro"
-                                                            >
-                                                                <Trash2 className="h-4 w-4" />
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Display Enfardado Data */}
-                                                    {item.activity === 'Enfardado' && (item.quantity || item.weight || item.quality) && (
-                                                        <div className="mt-2 text-xs font-bold text-campo-carbon-700 bg-purple-50 p-2 rounded border border-purple-100 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-300 flex gap-3 flex-wrap">
-                                                            {item.quantity && <span>📦 {item.quantity} un.</span>}
-                                                            {item.weight && <span>⚖️ {item.weight} kg</span>}
-                                                            {item.quality && <span>⭐ {item.quality}</span>}
-                                                        </div>
-                                                    )}
-
-                                                    <div className="grid grid-cols-2 gap-4 text-xs text-campo-beige-600 mt-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <Calendar className="h-3 w-3" />
-                                                            <span>Inicio: {formatDate(item.startDate)} <span className="text-campo-beige-500 ml-1">{formatTime(item.startDate)}</span></span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            {item.endDate ? (
-                                                                <>
-                                                                    <div className="w-3 flex justify-center"><ArrowRight className="h-3 w-3" /></div>
-                                                                    <span>Fin: {formatDate(item.endDate)} <span className="text-campo-beige-500 ml-1">{formatTime(item.endDate)}</span></span>
-                                                                </>
-                                                            ) : (
-                                                                <span className="text-emerald-600 font-medium flex items-center gap-1">
-                                                                    <Clock className="h-3 w-3" /> En curso
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        {(history[selectedCircle] || []).length === 0 && (
-                                            <p className="text-center text-campo-beige-500 py-8">No hay actividades registradas.</p>
-                                        )}
-                                    </div>
+            {
+                selectedCircle && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedCircle(null)}>
+                        <div
+                            className="bg-campo-beige-100 rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="p-4 border-b flex items-center justify-between bg-campo-beige-50">
+                                <div>
+                                    <h2 className="text-xl font-bold text-campo-carbon-800">Historial de Actividades</h2>
+                                    <p className="text-sm text-campo-beige-600">Círculo: {selectedCircle}</p>
                                 </div>
+                                <Button variant="ghost" size="icon" onClick={() => setSelectedCircle(null)}>
+                                    <X className="h-5 w-5 text-campo-beige-500 hover:text-red-500" />
+                                </Button>
+                            </div>
 
-                                {/* Status History Column */}
-                                <div className="p-6 bg-campo-beige-50/50 overflow-y-auto">
-                                    <h3 className="text-sm font-bold text-campo-beige-600 uppercase tracking-wider mb-6">Historial de Estado</h3>
-                                    <div className="space-y-4">
-                                        {(statusHistory[selectedCircle] || []).slice().reverse().map((item, idx) => (
-                                            <div key={item.id} className="bg-campo-beige-100 p-3 rounded-lg border border-campo-beige-300 shadow-sm flex  justify-between items-center">
-                                                <div className="flex items-center gap-3">
-                                                    <div className={`w-2 h-2 rounded-full ${getStatusColor(item.status).includes('emerald') ? 'bg-emerald-500' :
-                                                        getStatusColor(item.status).includes('amber') ? 'bg-amber-500' :
-                                                            getStatusColor(item.status).includes('red') ? 'bg-red-500' : 'bg-campo-beige-400'
-                                                        }`}></div>
-                                                    <div>
-                                                        <p className="text-sm font-bold text-campo-carbon-700">{item.status || 'Normal'}</p>
-                                                        <p className="text-xs text-campo-beige-500">{formatDate(item.date)} {formatTime(item.date)}</p>
+                            <div className="flex-1 overflow-auto p-0">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0 h-full">
+                                    {/* Activity History Column */}
+                                    <div className="p-6 border-r border-campo-beige-200 overflow-y-auto">
+                                        <h3 className="text-sm font-bold text-campo-beige-600 uppercase tracking-wider mb-6">Actividades</h3>
+                                        <div className="relative border-l-2 border-campo-beige-300 ml-3 space-y-8 pl-6 py-2">
+                                            {(history[selectedCircle] || []).slice().reverse().map((item, idx) => (
+                                                <div key={item.id} className="relative group">
+                                                    <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-campo-beige-100 shadow-sm ${getActivityColor(item.activity).split(' ')[1] || 'bg-campo-beige-400'}`}></div>
+
+                                                    <div className="bg-campo-beige-50 rounded-lg p-4 border border-campo-beige-200 hover:border-campo-beige-400 transition-colors relative">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div className="flex flex-col gap-1">
+                                                                <h3 className={`font-bold text-sm px-2 py-0.5 rounded-md w-fit ${getActivityColor(item.activity)}`}>
+                                                                    {item.activity || 'Sin actividad'}
+                                                                </h3>
+                                                                {item.machinery && (
+                                                                    <span className="text-xs text-campo-carbon-600 flex items-center gap-1 mt-1 font-medium bg-campo-beige-100 px-2 py-0.5 rounded-full w-fit border border-campo-beige-200">
+                                                                        🚜 {item.machinery}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${getSituationBadgeColor(item.situation)}`}>
+                                                                    {item.situation}
+                                                                </span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        deleteHistoryItem(selectedCircle, item.id, 'activity');
+                                                                    }}
+                                                                    className="text-campo-beige-500 hover:text-red-500 transition-colors p-1"
+                                                                    title="Eliminar registro"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Display Enfardado Data */}
+                                                        {item.activity === 'Enfardado' && (item.quantity || item.weight || item.quality) && (
+                                                            <div className="mt-2 text-xs font-bold text-campo-carbon-700 bg-purple-50 p-2 rounded border border-purple-100 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-300 flex gap-3 flex-wrap">
+                                                                {item.quantity && <span>📦 {item.quantity} un.</span>}
+                                                                {item.weight && <span>⚖️ {item.weight} kg</span>}
+                                                                {item.quality && <span>⭐ {item.quality}</span>}
+                                                            </div>
+                                                        )}
+
+                                                        <div className="grid grid-cols-2 gap-4 text-xs text-campo-beige-600 mt-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <Calendar className="h-3 w-3" />
+                                                                <span>Inicio: {formatDate(item.startDate)} <span className="text-campo-beige-500 ml-1">{formatTime(item.startDate)}</span></span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                {item.endDate ? (
+                                                                    <>
+                                                                        <div className="w-3 flex justify-center"><ArrowRight className="h-3 w-3" /></div>
+                                                                        <span>Fin: {formatDate(item.endDate)} <span className="text-campo-beige-500 ml-1">{formatTime(item.endDate)}</span></span>
+                                                                    </>
+                                                                ) : (
+                                                                    <span className="text-emerald-600 font-medium flex items-center gap-1">
+                                                                        <Clock className="h-3 w-3" /> En curso
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        deleteHistoryItem(selectedCircle, item.id, 'status');
-                                                    }}
-                                                    className="text-campo-beige-400 hover:text-red-500 transition-colors p-1"
-                                                    title="Eliminar registro"
-                                                >
-                                                    <Trash2 className="h-3 w-3" />
-                                                </button>
-                                            </div>
-                                        ))}
-                                        {(statusHistory[selectedCircle] || []).length === 0 && (
-                                            <p className="text-center text-campo-beige-500 py-8">No hay cambios de estado registrados.</p>
-                                        )}
+                                            ))}
+                                            {(history[selectedCircle] || []).length === 0 && (
+                                                <p className="text-center text-campo-beige-500 py-8">No hay actividades registradas.</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Status History Column */}
+                                    <div className="p-6 bg-campo-beige-50/50 overflow-y-auto">
+                                        <h3 className="text-sm font-bold text-campo-beige-600 uppercase tracking-wider mb-6">Historial de Estado</h3>
+                                        <div className="space-y-4">
+                                            {(statusHistory[selectedCircle] || []).slice().reverse().map((item, idx) => (
+                                                <div key={item.id} className="bg-campo-beige-100 p-3 rounded-lg border border-campo-beige-300 shadow-sm flex  justify-between items-center">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-2 h-2 rounded-full ${getStatusColor(item.status).includes('emerald') ? 'bg-emerald-500' :
+                                                            getStatusColor(item.status).includes('amber') ? 'bg-amber-500' :
+                                                                getStatusColor(item.status).includes('red') ? 'bg-red-500' : 'bg-campo-beige-400'
+                                                            }`}></div>
+                                                        <div>
+                                                            <p className="text-sm font-bold text-campo-carbon-700">{item.status || 'Normal'}</p>
+                                                            <p className="text-xs text-campo-beige-500">{formatDate(item.date)} {formatTime(item.date)}</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            deleteHistoryItem(selectedCircle, item.id, 'status');
+                                                        }}
+                                                        className="text-campo-beige-400 hover:text-red-500 transition-colors p-1"
+                                                        title="Eliminar registro"
+                                                    >
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {(statusHistory[selectedCircle] || []).length === 0 && (
+                                                <p className="text-center text-campo-beige-500 py-8">No hay cambios de estado registrados.</p>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 };
 

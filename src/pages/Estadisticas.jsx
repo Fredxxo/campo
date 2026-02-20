@@ -9,6 +9,7 @@ const Estadisticas = () => {
     const [tallerStats, setTallerStats] = useState({});
     const [tallerCategoryStats, setTallerCategoryStats] = useState({});
     const [circleStats, setCircleStats] = useState({});
+    const [ventasStats, setVentasStats] = useState({});
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState('monthly'); // 'monthly' | 'circles'
 
@@ -83,9 +84,45 @@ const Estadisticas = () => {
             setTallerCategoryStats(catStats);
         });
 
+        const unsubscribeVentas = onSnapshot(collection(db, "ventas"), (snapshot) => {
+            const vStats = {};
+
+            snapshot.forEach(doc => {
+                const venta = doc.data();
+                const createdAt = venta.createdAt;
+                const date = createdAt ? (createdAt.toDate ? createdAt.toDate() : new Date(createdAt)) : new Date();
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+                if (!vStats[monthKey]) {
+                    vStats[monthKey] = {
+                        totalQuantity: 0,
+                        totalWeight: 0,
+                        details: []
+                    };
+                }
+
+                const q = parseInt(venta.cantidad) || 0;
+                const w = parseFloat(venta.peso) || 0;
+
+                vStats[monthKey].totalQuantity += q;
+                vStats[monthKey].totalWeight += w;
+                vStats[monthKey].details.push({
+                    circle: venta.destino || 'Venta Externa',
+                    date: date.toLocaleDateString('es-AR'),
+                    rawDate: date.getTime(),
+                    quality: venta.producto || 'Venta',
+                    quantity: q,
+                    weight: w,
+                    type: 'sale'
+                });
+            });
+            setVentasStats(vStats);
+        });
+
         return () => {
             unsubscribe();
             unsubscribeTaller();
+            unsubscribeVentas();
         };
     }, []);
 
@@ -97,12 +134,12 @@ const Estadisticas = () => {
             const history = circle.history;
             if (!history || history.length === 0) return;
 
-            // Initialize circle stats if not exists
             if (!cStats[circle.name]) {
                 cStats[circle.name] = {
                     totalCuts: 0,
                     totalQuantity: 0,
                     totalWeight: 0,
+                    growthDurations: [],
                     events: []
                 };
             }
@@ -123,6 +160,7 @@ const Estadisticas = () => {
                         listo: 0,
                         urgente: 0,
                         pasado: 0,
+                        growthDurations: [],
                         details: [],
                         production: {
                             totalQuantity: 0,
@@ -151,12 +189,32 @@ const Estadisticas = () => {
                         status = 'Pasado';
                     }
 
+                    // Calculate growth duration
+                    let growthDurationDays = null;
+                    for (let j = i - 1; j >= 0; j--) {
+                        if (sortedHistory[j].activity === 'En crecimiento') {
+                            const growthStart = new Date(sortedHistory[j].startDate);
+                            const cutStart = new Date(currentItem.startDate);
+                            const diffTime = cutStart - growthStart; // in ms
+                            if (diffTime >= 0) {
+                                growthDurationDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                            }
+                            break;
+                        }
+                    }
+
+                    if (growthDurationDays !== null) {
+                        monthlyStats[monthKey].growthDurations.push(growthDurationDays);
+                        cStats[circle.name].growthDurations.push(growthDurationDays);
+                    }
+
                     monthlyStats[monthKey].details.push({
                         circle: circle.name,
                         date: date.toLocaleDateString(),
                         status: status,
                         prevAlert: previousAlert,
-                        activity: 'Corte'
+                        activity: 'Corte',
+                        growthDurationDays: growthDurationDays
                     });
                 }
 
@@ -171,8 +229,11 @@ const Estadisticas = () => {
                     monthlyStats[monthKey].production.details.push({
                         circle: circle.name,
                         date: date.toLocaleDateString(),
+                        rawDate: date.getTime(),
                         quantity: qty,
-                        weight: weight
+                        weight: weight,
+                        quality: currentItem.quality || '-',
+                        type: 'production'
                     });
 
                     // Circle Stats
@@ -212,7 +273,7 @@ const Estadisticas = () => {
 
     // Helper to get all unique months from both stats
     const getAllMonths = () => {
-        const months = new Set([...Object.keys(stats), ...Object.keys(tallerStats)]);
+        const months = new Set([...Object.keys(stats), ...Object.keys(tallerStats), ...Object.keys(ventasStats)]);
         return Array.from(months).sort().reverse();
     };
 
@@ -268,6 +329,7 @@ const Estadisticas = () => {
                         {getAllMonths().map((monthKey) => {
                             const data = stats[monthKey] || { production: { details: [], byQuality: {}, totalQuantity: 0, totalWeight: 0 }, total: 0, details: [] };
                             const tData = tallerStats[monthKey];
+                            const vData = ventasStats[monthKey] || { totalQuantity: 0, totalWeight: 0, details: [] };
 
                             return (
                                 <div key={monthKey} className="space-y-6">
@@ -278,36 +340,63 @@ const Estadisticas = () => {
                                         </h2>
                                     </div>
 
-                                    {/* Section: Producción (Enfardado) */}
-                                    {data.production.details.length > 0 && (
+                                    {/* Section: Producción y Ventas (Stock) */}
+                                    {(data.production.details.length > 0 || vData.details.length > 0) && (
                                         <div className="space-y-4">
                                             <h3 className="text-lg font-semibold text-campo-carbon-600 flex items-center gap-2">
-                                                <Package className="h-5 w-5" /> Producción de Rollos/Fardos
+                                                <Package className="h-5 w-5" /> Stock y Producción (Rollos/Fardos)
                                             </h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <Card className="bg-indigo-50/50 border-indigo-100">
-                                                    <CardHeader className="pb-2">
-                                                        <CardTitle className="text-sm font-medium text-indigo-600 flex items-center gap-2">
-                                                            <Package className="h-4 w-4" />
-                                                            Total Unidades
+
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                                {/* Unidades */}
+                                                <Card className="bg-white border-campo-beige-300">
+                                                    <CardHeader className="pb-2 border-b border-campo-beige-100 bg-campo-beige-50">
+                                                        <CardTitle className="text-sm font-medium text-campo-carbon-800 flex items-center gap-2">
+                                                            <Package className="h-4 w-4 text-indigo-600" />
+                                                            Unidades
                                                         </CardTitle>
                                                     </CardHeader>
-                                                    <CardContent>
-                                                        <div className="text-3xl font-bold text-indigo-700">{data.production.totalQuantity}</div>
-                                                        <p className="text-xs text-indigo-600 mt-1">Rollos / Fardos</p>
+                                                    <CardContent className="pt-4">
+                                                        <div className="grid grid-cols-3 gap-2 text-center divide-x divide-campo-beige-200">
+                                                            <div>
+                                                                <p className="text-xs text-campo-beige-600 mb-1">Producido</p>
+                                                                <p className="text-xl font-bold text-indigo-700">{data.production.totalQuantity}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-campo-beige-600 mb-1">Vendido</p>
+                                                                <p className="text-xl font-bold text-red-600">-{vData.totalQuantity}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-campo-beige-600 mb-1">Stock</p>
+                                                                <p className={`text-xl font-bold ${data.production.totalQuantity - vData.totalQuantity >= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>{data.production.totalQuantity - vData.totalQuantity}</p>
+                                                            </div>
+                                                        </div>
                                                     </CardContent>
                                                 </Card>
 
-                                                <Card className="bg-campo-green-50/50 border-blue-100">
-                                                    <CardHeader className="pb-2">
-                                                        <CardTitle className="text-sm font-medium text-campo-green-600 flex items-center gap-2">
-                                                            <Scale className="h-4 w-4" />
-                                                            Total Kilos
+                                                {/* Kilos */}
+                                                <Card className="bg-white border-campo-beige-300">
+                                                    <CardHeader className="pb-2 border-b border-campo-beige-100 bg-campo-beige-50">
+                                                        <CardTitle className="text-sm font-medium text-campo-carbon-800 flex items-center gap-2">
+                                                            <Scale className="h-4 w-4 text-campo-green-600" />
+                                                            Kilos (Kg)
                                                         </CardTitle>
                                                     </CardHeader>
-                                                    <CardContent>
-                                                        <div className="text-3xl font-bold text-campo-green-700">{data.production.totalWeight.toLocaleString('es-AR')}</div>
-                                                        <p className="text-xs text-campo-green-600 mt-1">Kg Totales</p>
+                                                    <CardContent className="pt-4">
+                                                        <div className="grid grid-cols-3 gap-2 text-center divide-x divide-campo-beige-200">
+                                                            <div>
+                                                                <p className="text-xs text-campo-beige-600 mb-1">Producido</p>
+                                                                <p className="text-xl font-bold text-campo-green-700">{data.production.totalWeight.toLocaleString('es-AR')}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-campo-beige-600 mb-1">Vendido</p>
+                                                                <p className="text-xl font-bold text-red-600">-{vData.totalWeight.toLocaleString('es-AR')}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-campo-beige-600 mb-1">Stock</p>
+                                                                <p className={`text-xl font-bold ${data.production.totalWeight - vData.totalWeight >= 0 ? 'text-emerald-600' : 'text-amber-600'}`}>{(data.production.totalWeight - vData.totalWeight).toLocaleString('es-AR')}</p>
+                                                            </div>
+                                                        </div>
                                                     </CardContent>
                                                 </Card>
                                             </div>
@@ -325,28 +414,40 @@ const Estadisticas = () => {
                                                 </div>
                                             )}
 
-
                                             <div className="bg-campo-beige-100 rounded-lg border border-campo-beige-300 overflow-hidden shadow-sm">
                                                 <table className="w-full text-sm text-left">
                                                     <thead className="text-xs text-campo-beige-600 uppercase bg-campo-beige-50 border-b border-campo-beige-200">
                                                         <tr>
-                                                            <th className="px-4 py-3 font-medium">Círculo</th>
+                                                            <th className="px-4 py-3 font-medium">Movimiento</th>
                                                             <th className="px-4 py-3 font-medium">Fecha</th>
-                                                            <th className="px-4 py-3 font-medium text-left">Calidad</th>
+                                                            <th className="px-4 py-3 font-medium text-left">Detalle</th>
                                                             <th className="px-4 py-3 font-medium text-right">Cantidad</th>
                                                             <th className="px-4 py-3 font-medium text-right">Kilos</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-100">
-                                                        {data.production.details.map((item, idx) => (
-                                                            <tr key={idx} className="hover:bg-campo-beige-50">
-                                                                <td className="px-4 py-3 font-medium text-campo-carbon-700">{item.circle}</td>
-                                                                <td className="px-4 py-3 text-campo-beige-600">{item.date}</td>
-                                                                <td className="px-4 py-3 text-left text-campo-carbon-600"><span className="text-xs font-bold px-2 py-0.5 rounded bg-campo-beige-200 border border-campo-beige-300">{item.quality || '-'}</span></td>
-                                                                <td className="px-4 py-3 text-right font-mono text-campo-carbon-700">{item.quantity}</td>
-                                                                <td className="px-4 py-3 text-right font-mono text-campo-carbon-700">{item.weight} kg</td>
-                                                            </tr>
-                                                        ))}
+                                                        {[...data.production.details, ...vData.details]
+                                                            .sort((a, b) => (b.rawDate || 0) - (a.rawDate || 0))
+                                                            .map((item, idx) => (
+                                                                <tr key={idx} className={`hover:bg-campo-beige-50 ${item.type === 'sale' ? 'bg-red-50/20' : ''}`}>
+                                                                    <td className="px-4 py-3 font-medium">
+                                                                        {item.type === 'sale' ?
+                                                                            <span className="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 border border-red-200">VENTA</span> :
+                                                                            <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">PRODUCCIÓN</span>}
+                                                                    </td>
+                                                                    <td className="px-4 py-3 text-campo-beige-600">{item.date}</td>
+                                                                    <td className="px-4 py-3 text-left flex flex-col gap-0.5 text-campo-carbon-600">
+                                                                        <span className="font-medium truncate max-w-[150px]">{item.circle}</span>
+                                                                        <span className="text-[10px] text-campo-beige-500 uppercase">{item.quality || '-'}</span>
+                                                                    </td>
+                                                                    <td className={`px-4 py-3 text-right font-mono font-medium ${item.type === 'sale' ? 'text-red-600' : 'text-emerald-700'}`}>
+                                                                        {item.type === 'sale' ? '-' : '+'}{item.quantity}
+                                                                    </td>
+                                                                    <td className={`px-4 py-3 text-right font-mono font-medium ${item.type === 'sale' ? 'text-red-600' : 'text-emerald-700'}`}>
+                                                                        {item.type === 'sale' ? '-' : '+'}{item.weight.toLocaleString('es-AR')} kg
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
                                                     </tbody>
                                                 </table>
                                             </div>
@@ -360,7 +461,7 @@ const Estadisticas = () => {
                                                 <CheckCircle className="h-5 w-5" /> Eficiencia de Cortes
                                             </h3>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                                 <Card className="bg-emerald-50/50 border-emerald-100">
                                                     <CardHeader className="pb-2">
                                                         <CardTitle className="text-sm font-medium text-emerald-600 flex items-center gap-2">
@@ -405,6 +506,25 @@ const Estadisticas = () => {
                                                         </p>
                                                     </CardContent>
                                                 </Card>
+
+                                                <Card className="bg-blue-50/50 border-blue-100">
+                                                    <CardHeader className="pb-2">
+                                                        <CardTitle className="text-sm font-medium text-blue-600 flex items-center gap-2">
+                                                            <Calendar className="h-4 w-4" />
+                                                            Crecimiento
+                                                        </CardTitle>
+                                                    </CardHeader>
+                                                    <CardContent>
+                                                        <div className="text-2xl font-bold text-blue-700">
+                                                            {data.growthDurations && data.growthDurations.length > 0
+                                                                ? (data.growthDurations.reduce((a, b) => a + b, 0) / data.growthDurations.length).toFixed(1)
+                                                                : '-'}
+                                                        </div>
+                                                        <p className="text-xs text-blue-600 mt-1">
+                                                            Días promedio
+                                                        </p>
+                                                    </CardContent>
+                                                </Card>
                                             </div>
 
                                             {/* Optional: Detailed list */}
@@ -418,6 +538,9 @@ const Estadisticas = () => {
                                                             <div className="font-medium text-campo-carbon-700">{detail.circle}</div>
                                                             <div className="flex items-center gap-4">
                                                                 <span className="text-campo-beige-600 text-xs">{detail.date}</span>
+                                                                {detail.growthDurationDays !== null && detail.growthDurationDays !== undefined && (
+                                                                    <span className="text-blue-600 text-xs font-semibold">{detail.growthDurationDays} días crec.</span>
+                                                                )}
                                                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${detail.status === 'A tiempo' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
                                                                     detail.status === 'Urgente' ? 'bg-amber-100 text-amber-700 border-amber-200' :
                                                                         detail.status === 'Pasado' ? 'bg-red-100 text-red-700 border-red-200' :
@@ -516,7 +639,7 @@ const Estadisticas = () => {
                                     </div>
                                 </CardHeader>
                                 <CardContent className="pt-4 space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-3 gap-4">
                                         <div>
                                             <p className="text-xs text-campo-beige-600 mb-1">Total Unidades</p>
                                             <p className="text-xl font-bold text-campo-carbon-700">{cData.totalQuantity}</p>
@@ -524,6 +647,14 @@ const Estadisticas = () => {
                                         <div>
                                             <p className="text-xs text-campo-beige-600 mb-1">Total Kg</p>
                                             <p className="text-xl font-bold text-campo-carbon-700">{cData.totalWeight.toLocaleString('es-AR')}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-campo-beige-600 mb-1">Prom. Crec.</p>
+                                            <p className="text-xl font-bold text-blue-600">
+                                                {cData.growthDurations && cData.growthDurations.length > 0
+                                                    ? (cData.growthDurations.reduce((a, b) => a + b, 0) / cData.growthDurations.length).toFixed(1) + 'd'
+                                                    : '-'}
+                                            </p>
                                         </div>
                                     </div>
 

@@ -132,6 +132,7 @@ const Dashboard = () => {
 
     const getActivityColor = (activity) => {
         switch (activity) {
+            case 'En crecimiento': return 'bg-campo-green-500';
             case 'Corte': return 'bg-amber-500';
             case 'Rastrillado': return 'bg-orange-500';
             case 'Enfardado': return 'bg-purple-500';
@@ -208,6 +209,11 @@ const Dashboard = () => {
                                                                 <span className="text-xs px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200 flex items-center gap-1">
                                                                     <AlertTriangle className="w-3 h-3" />
                                                                     {activity.alert}
+                                                                </span>
+                                                            )}
+                                                            {activity.machinery && (
+                                                                <span className="text-xs px-2 py-0.5 bg-campo-beige-100 text-campo-carbon-700 rounded-full border border-campo-beige-300 flex items-center gap-1 font-medium">
+                                                                    🚜 {activity.machinery}
                                                                 </span>
                                                             )}
                                                         </div>
