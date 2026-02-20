@@ -36,27 +36,75 @@ const Circulos = () => {
 
     const [circulosList, setCirculosList] = useState(initialCirculosList);
     const [history, setHistory] = useState({});
+    const [statusHistory, setStatusHistory] = useState({}); // New separate history for status
     const [selectedCircle, setSelectedCircle] = useState(null);
+
+    // Enfardado Modal State
+    const [isEnfardadoModalOpen, setIsEnfardadoModalOpen] = useState(false);
+    const [enfardadoData, setEnfardadoData] = useState({ quantity: '', weight: '', quality: '' });
+    const [pendingEnfardadoCircle, setPendingEnfardadoCircle] = useState(null);
+
 
     // Suscribirse a cambios en la colección 'circles' de Firestore
     useEffect(() => {
         const unsubscribe = onSnapshot(collection(db, "circles"), (snapshot) => {
+
             const historyData = {};
+            const statusHistoryData = {};
             const hectaresData = {};
+            const firestoreCircleNames = new Set();
+            const deletedCircles = new Set();
 
             snapshot.forEach(doc => {
                 const data = doc.data();
-                if (data.history) historyData[doc.id] = data.history;
-                if (data.hectares !== undefined) hectaresData[doc.id] = data.hectares;
+                if (data.deleted) {
+                    deletedCircles.add(doc.id);
+                } else {
+                    if (data.history) historyData[doc.id] = data.history;
+                    if (data.statusHistory) statusHistoryData[doc.id] = data.statusHistory;
+                    if (data.hectares !== undefined) hectaresData[doc.id] = data.hectares;
+                    firestoreCircleNames.add(doc.id);
+                }
             });
 
             setHistory(historyData);
+            setStatusHistory(statusHistoryData);
 
-            // Actualizar hectáreas en la lista de círculos
-            setCirculosList(prevList => prevList.map(c => ({
-                ...c,
-                hectares: hectaresData[c.name] !== undefined ? hectaresData[c.name] : c.hectares
-            })));
+            // Combinar la lista inicial con los encontrados en Firestore
+            // Usamos un Map para asegurar unicidad y priorizar datos de Firestore
+            const combinedCircles = new Map();
+
+            // Primero, añadimos los iniciales
+            initialCirculosList.forEach(circle => {
+                if (!deletedCircles.has(circle.name)) {
+                    combinedCircles.set(circle.name, {
+                        ...circle,
+                        hectares: hectaresData[circle.name] !== undefined ? hectaresData[circle.name] : circle.hectares
+                    });
+                }
+            });
+
+            // Luego, añadimos los que están en Firestore pero NO en la lista inicial
+            firestoreCircleNames.forEach(name => {
+                if (!combinedCircles.has(name)) {
+                    combinedCircles.set(name, {
+                        name: name,
+                        hectares: hectaresData[name] !== undefined ? hectaresData[name] : 0
+                    });
+                }
+            });
+
+            const sortedList = Array.from(combinedCircles.values()).sort((a, b) => {
+                const numA = parseInt(a.name);
+                const numB = parseInt(b.name);
+                if (!isNaN(numA) && !isNaN(numB)) {
+                    return numA - numB;
+                }
+                return a.name.localeCompare(b.name);
+            });
+
+            setCirculosList(sortedList);
+
         }, (error) => {
             console.error("Error fetching circles:", error);
         });
@@ -64,10 +112,55 @@ const Circulos = () => {
         return () => unsubscribe();
     }, []);
 
+    // Estado para el modal de agregar círculo
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [newCircleName, setNewCircleName] = useState('');
+    const [newCircleHectares, setNewCircleHectares] = useState('');
+    // Estado para el modal de confirmación de eliminación
+    const [deleteConfirmation, setDeleteConfirmation] = useState({ isOpen: false, circleName: null });
+
+    const handleAddCircle = async () => {
+        if (!newCircleName.trim()) return;
+
+        try {
+            await setDoc(doc(db, "circles", newCircleName), {
+                hectares: newCircleHectares ? parseFloat(newCircleHectares) : 0,
+                history: [],
+                statusHistory: []
+            });
+            setIsAddModalOpen(false);
+            setNewCircleName('');
+            setNewCircleHectares('');
+        } catch (error) {
+            console.error("Error adding circle:", error);
+            alert("Hubo un error al crear el círculo.");
+        }
+    };
+
+    const handleDeleteCircle = async () => {
+        const { circleName } = deleteConfirmation;
+        if (!circleName) return;
+
+        try {
+            await setDoc(doc(db, "circles", circleName), { deleted: true }, { merge: true });
+            setDeleteConfirmation({ isOpen: false, circleName: null });
+        } catch (error) {
+            console.error("Error deleting circle:", error);
+            alert("Hubo un error al eliminar el círculo.");
+        }
+    };
+
     const getCurrentState = (circuloName) => {
         const circleHistory = history[circuloName];
         if (!circleHistory || circleHistory.length === 0) return { activity: '', situation: 'Iniciado', alert: '' };
         return circleHistory[circleHistory.length - 1];
+    };
+
+    // Helper to get current status from statusHistory
+    const getCurrentStatus = (circuloName) => {
+        const sHistory = statusHistory[circuloName];
+        if (!sHistory || sHistory.length === 0) return '';
+        return sHistory[sHistory.length - 1].status;
     };
 
     const updateCircleData = async (circleName, dataToUpdate) => {
@@ -96,7 +189,7 @@ const Circulos = () => {
                 id: Date.now() + Math.random(),
                 activity: '',
                 situation: 'Iniciado',
-                alert: '',
+                alert: '', // Deprecated in favor of separate status, but kept for legacy
                 startDate: new Date().toISOString(),
                 endDate: null
             }];
@@ -107,22 +200,17 @@ const Circulos = () => {
         const currentItem = list[lastIndex];
         const now = new Date().toISOString();
 
-        // Close current if needed (logic: if we are changing activity, usually we close previous?
-        // Or if we specifically want to log a new entry.
-        // The previous logic for createNewHistoryEntry seemed to close 'if !currentItem.endDate'
-        // But simply updating 'situation' or 'alert' usually might not close the activity itself?
-        // Let's stick to the previous CreateNewHistoryEntry logic which ALWAYS created a new entry
-        // for any change, closing the previous one. This creates a granular audit log.
-
         if (!currentItem.endDate) {
             list[lastIndex] = { ...currentItem, endDate: now };
         }
-
         list.push({
             id: Date.now(),
             activity: changes.activity !== undefined ? changes.activity : currentItem.activity,
             situation: changes.situation !== undefined ? changes.situation : currentItem.situation,
             alert: changes.alert !== undefined ? changes.alert : currentItem.alert,
+            quantity: changes.quantity || null, // Capture quantity
+            weight: changes.weight || null, // Capture weight
+            quality: changes.quality || null, // Capture quality
             startDate: now,
             endDate: null
         });
@@ -132,12 +220,99 @@ const Circulos = () => {
 
     const handleActivityChange = (circuloName, newActivity) => {
         const currentHistory = history[circuloName] || [];
+        const lastItem = currentHistory[currentHistory.length - 1] || {};
+        const lastActivity = lastItem.activity || '';
+        const currentStatus = getCurrentStatus(circuloName);
+
+        // Process Constraints
+        if (newActivity === 'Corte') {
+            // Optional: Require a status to start? For now, allow it.
+        } else if (newActivity === 'Rastrillado') {
+            if (lastActivity !== 'Corte') {
+                alert("Solo se puede Rastrillar después de Cortar.");
+                return;
+            }
+        } else if (newActivity === 'Enfardado') {
+            if (lastActivity !== 'Rastrillado') {
+                alert("Solo se puede Enfardar después de Rastrillar.");
+                return;
+            }
+            // INTERCEPT: Open Modal for Enfardado
+            setPendingEnfardadoCircle(circuloName);
+            setEnfardadoData({ quantity: '', weight: '', quality: '' });
+            setIsEnfardadoModalOpen(true);
+            return; // Stop here, wait for modal confirmation
+        }
+
         const newHistory = calculateNewHistory(currentHistory, {
             activity: newActivity,
             situation: 'Iniciado',
-            alert: ''
+            alert: currentStatus // Sync alert field with current status
         });
         updateCircleData(circuloName, { history: newHistory });
+    };
+
+    const confirmEnfardado = () => {
+        if (!pendingEnfardadoCircle) return;
+        if (!enfardadoData.quantity || !enfardadoData.weight || !enfardadoData.quality) {
+            alert("Por favor ingrese cantidad, peso y calidad.");
+            return;
+        }
+
+        const circuloName = pendingEnfardadoCircle;
+        const currentHistory = history[circuloName] || [];
+        const currentStatus = getCurrentStatus(circuloName);
+
+        const newHistory = calculateNewHistory(currentHistory, {
+            activity: 'Enfardado',
+            situation: 'Iniciado',
+            alert: currentStatus,
+            quantity: enfardadoData.quantity,
+            weight: enfardadoData.weight,
+            quality: enfardadoData.quality
+        });
+
+        updateCircleData(circuloName, { history: newHistory });
+
+        // Reset and close modal
+        setIsEnfardadoModalOpen(false);
+        setPendingEnfardadoCircle(null);
+        setEnfardadoData({ quantity: '', weight: '', quality: '' });
+    };
+
+    const handleStatusChange = (circuloName, newStatus) => {
+        const currentStatus = getCurrentStatus(circuloName);
+        const currentHistory = history[circuloName] || [];
+        const lastActivity = (currentHistory[currentHistory.length - 1] || {}).activity;
+
+        // Constraint: Cannot clear status (set to empty) unless last activity was 'Enfardado'
+        // OR if there was no status to begin with (initial set)
+        if (newStatus === '' && currentStatus !== '') {
+            if (lastActivity !== 'Enfardado') {
+                alert("No se puede cambiar la situación a 'Normal' hasta que se haya completado el proceso (Enfardado).");
+                return;
+            }
+        }
+
+        // Add to separate status history
+        const sHistory = statusHistory[circuloName] || [];
+        const newStatusEntry = {
+            id: Date.now(),
+            status: newStatus,
+            date: new Date().toISOString()
+        };
+        const newStatusHistory = [...sHistory, newStatusEntry];
+
+        // Also update the main activity history 'alert' field to keep UI in sync
+        // We do this by creating a new history entry ONLY if we want to log it there too,
+        // OR simply update the current 'alert' field of the open activity?
+        // Let's create a new granular entry to be safe and consistent with previous design
+        const newMainHistory = calculateNewHistory(currentHistory, { alert: newStatus });
+
+        updateCircleData(circuloName, {
+            statusHistory: newStatusHistory,
+            history: newMainHistory
+        });
     };
 
     const handleSituationChange = (circuloName, newSituation) => {
@@ -146,17 +321,17 @@ const Circulos = () => {
         updateCircleData(circuloName, { history: newHistory });
     };
 
-    const handleAlertChange = (circuloName, newAlert) => {
-        const currentHistory = history[circuloName] || [];
-        const newHistory = calculateNewHistory(currentHistory, { alert: newAlert });
-        updateCircleData(circuloName, { history: newHistory });
-    };
-
     // Eliminar un item del historial
-    const deleteHistoryItem = (circuloName, itemId) => {
-        const currentHistory = history[circuloName] || [];
-        const updatedHistory = currentHistory.filter(item => item.id !== itemId);
-        updateCircleData(circuloName, { history: updatedHistory });
+    const deleteHistoryItem = (circuloName, itemId, type = 'activity') => {
+        if (type === 'activity') {
+            const currentHistory = history[circuloName] || [];
+            const updatedHistory = currentHistory.filter(item => item.id !== itemId);
+            updateCircleData(circuloName, { history: updatedHistory });
+        } else if (type === 'status') {
+            const currentStatusHistory = statusHistory[circuloName] || [];
+            const updatedHistory = currentStatusHistory.filter(item => item.id !== itemId);
+            updateCircleData(circuloName, { statusHistory: updatedHistory });
+        }
     };
 
     const formatDate = (isoString) => {
@@ -164,7 +339,7 @@ const Circulos = () => {
         return new Date(isoString).toLocaleDateString('es-AR', {
             day: '2-digit',
             month: '2-digit',
-            year: 'numeric' //, hour: '2-digit', minute: '2-digit'
+            year: 'numeric'
         });
     };
 
@@ -184,9 +359,9 @@ const Circulos = () => {
         }
     };
 
-    // Card colors driven by ALERT status now
-    const getAlertColor = (alert) => {
-        switch (alert) {
+    // Card colors driven by STATUS (alert)
+    const getStatusColor = (status) => {
+        switch (status) {
             case 'Listo para cortar': return 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50/30';
             case 'Cortar urgente': return 'border-amber-500 ring-1 ring-amber-500 bg-amber-50/30';
             case 'Pasado': return 'border-red-500 ring-1 ring-red-500 bg-red-50/30';
@@ -194,8 +369,8 @@ const Circulos = () => {
         }
     };
 
-    const getAlertBadgeColor = (alert) => {
-        switch (alert) {
+    const getStatusBadgeColor = (status) => {
+        switch (status) {
             case 'Listo para cortar': return 'text-emerald-700 bg-emerald-100 border-emerald-200';
             case 'Cortar urgente': return 'text-amber-700 bg-amber-100 border-amber-200';
             case 'Pasado': return 'text-red-700 bg-red-100 border-red-200';
@@ -203,7 +378,6 @@ const Circulos = () => {
         }
     };
 
-    // Basic badge for situation/process
     const getSituationBadgeColor = (situation) => {
         return 'text-slate-600 bg-slate-100 border-slate-200';
     };
@@ -215,7 +389,7 @@ const Circulos = () => {
                     <h1 className="text-3xl font-bold text-foreground tracking-tight">Círculos</h1>
                     <p className="text-muted-foreground mt-2">Gestión de lotes y pivots.</p>
                 </div>
-                <Button className="shadow-lg shadow-primary/30">
+                <Button className="shadow-lg shadow-primary/30" onClick={() => setIsAddModalOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" /> Nuevo Círculo
                 </Button>
             </div>
@@ -223,9 +397,11 @@ const Circulos = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                 {circulosList.map((circulo, index) => {
                     const currentState = getCurrentState(circulo.name);
+                    const currentStatus = getCurrentStatus(circulo.name);
+
                     const activityColorClass = getActivityColor(currentState.activity);
-                    const cardColorClass = getAlertColor(currentState.alert); // Color based on alert
-                    const alertBadgeClass = getAlertBadgeColor(currentState.alert);
+                    const cardColorClass = getStatusColor(currentStatus);
+                    const statusBadgeClass = getStatusBadgeColor(currentStatus);
 
                     return (
                         <Card
@@ -238,19 +414,31 @@ const Circulos = () => {
                                         <Circle className="h-5 w-5" />
                                     </div>
 
-                                    {/* Alert Selector (Top Right) */}
-                                    <div className="relative">
-                                        <select
-                                            className={`appearance-none text-xs font-bold px-3 py-1 rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 text-right ${currentState.alert ? alertBadgeClass : 'text-slate-400 bg-slate-50 border-slate-200'}`}
-                                            value={currentState.alert || ''}
-                                            onChange={(e) => handleAlertChange(circulo.name, e.target.value)}
-                                            onClick={(e) => e.stopPropagation()}
+                                    {/* Status / Alert Dropdown (Top Right) */}
+                                    <div className="flex items-center gap-1">
+                                        <div className="relative">
+                                            <select
+                                                className={`appearance-none text-xs font-bold px-3 py-1 rounded-full border cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1 text-right ${currentStatus ? statusBadgeClass : 'text-slate-400 bg-slate-50 border-slate-200'}`}
+                                                value={currentStatus || ''}
+                                                onChange={(e) => handleStatusChange(circulo.name, e.target.value)}
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <option value="">Normal</option>
+                                                <option value="Listo para cortar">Listo para cortar</option>
+                                                <option value="Cortar urgente">Cortar urgente</option>
+                                                <option value="Pasado">Pasado</option>
+                                            </select>
+                                        </div>
+                                        <button
+                                            className="text-slate-300 hover:text-red-500 hover:bg-slate-50 p-1 rounded-full transition-colors"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDeleteConfirmation({ isOpen: true, circleName: circulo.name });
+                                            }}
+                                            title="Eliminar círculo"
                                         >
-                                            <option value="">Normal</option>
-                                            <option value="Listo para cortar">Listo para cortar</option>
-                                            <option value="Cortar urgente">Cortar urgente</option>
-                                            <option value="Pasado">Pasado</option>
-                                        </select>
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="flex justify-between items-start">
@@ -323,11 +511,150 @@ const Circulos = () => {
                 })}
             </div>
 
+            {/* Modal para Agregar Círculo */}
+            {isAddModalOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsAddModalOpen(false)}>
+                    <div
+                        className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="p-4 border-b flex items-center justify-between bg-slate-50">
+                            <h2 className="text-xl font-bold text-slate-800">Nuevo Círculo</h2>
+                            <Button variant="ghost" size="icon" onClick={() => setIsAddModalOpen(false)}>
+                                <X className="h-5 w-5 text-slate-400 hover:text-red-500" />
+                            </Button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre / Número del Círculo</label>
+                                <input
+                                    type="text"
+                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    placeholder="Ej: 17 sur, 5(3)"
+                                    value={newCircleName}
+                                    onChange={(e) => setNewCircleName(e.target.value)}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Hectáreas (Opcional)</label>
+                                <input
+                                    type="number"
+                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    placeholder="0"
+                                    value={newCircleHectares}
+                                    onChange={(e) => setNewCircleHectares(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="pt-4 flex justify-end gap-2">
+                                <Button variant="ghost" onClick={() => setIsAddModalOpen(false)}>Cancelar</Button>
+                                <Button onClick={handleAddCircle} disabled={!newCircleName.trim()}>Guardar</Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Enfardado Data Entry */}
+            {isEnfardadoModalOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsEnfardadoModalOpen(false)}>
+                    <div
+                        className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="p-4 border-b flex items-center justify-between bg-slate-50">
+                            <h2 className="text-xl font-bold text-slate-800">Datos de Enfardado</h2>
+                            <Button variant="ghost" size="icon" onClick={() => setIsEnfardadoModalOpen(false)}>
+                                <X className="h-5 w-5 text-slate-400 hover:text-red-500" />
+                            </Button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Cantidad (Unidades)</label>
+                                <input
+                                    type="number"
+                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                    placeholder="Ej: 150"
+                                    value={enfardadoData.quantity}
+                                    onChange={(e) => setEnfardadoData({ ...enfardadoData, quantity: e.target.value })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Peso Total (Kg)</label>
+                                <input
+                                    type="number"
+                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                    placeholder="Ej: 4500"
+                                    value={enfardadoData.weight}
+                                    onChange={(e) => setEnfardadoData({ ...enfardadoData, weight: e.target.value })}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Calidad</label>
+                                <select
+                                    className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                                    value={enfardadoData.quality}
+                                    onChange={(e) => setEnfardadoData({ ...enfardadoData, quality: e.target.value })}
+                                >
+                                    <option value="">Seleccionar Calidad...</option>
+                                    <option value="Premium">Premium</option>
+                                    <option value="Primera">Primera</option>
+                                    <option value="Segunda">Segunda</option>
+                                    <option value="Tercera">Tercera</option>
+                                    <option value="Descarte">Descarte</option>
+                                </select>
+                            </div>
+
+                            <div className="pt-4 flex justify-end gap-2">
+                                <Button variant="ghost" onClick={() => setIsEnfardadoModalOpen(false)}>Cancelar</Button>
+                                <Button
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                                    onClick={confirmEnfardado}
+                                    disabled={!enfardadoData.quantity || !enfardadoData.weight || !enfardadoData.quality}
+                                >
+                                    Confirmar
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de Confirmación de Eliminación */}
+            {deleteConfirmation.isOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setDeleteConfirmation({ isOpen: false, circleName: null })}>
+                    <div
+                        className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="p-6 text-center">
+                            <div className="bg-red-50 text-red-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Trash2 className="h-8 w-8" />
+                            </div>
+                            <h2 className="text-xl font-bold text-slate-800 mb-2">¿Eliminar Círculo?</h2>
+                            <p className="text-sm text-slate-600 mb-6">
+                                ¿Estás seguro que deseas eliminar <span className="font-bold text-slate-800">{deleteConfirmation.circleName}</span>? Esta acción no se puede deshacer fácilmente.
+                            </p>
+
+                            <div className="flex gap-3 justify-center">
+                                <Button variant="ghost" onClick={() => setDeleteConfirmation({ isOpen: false, circleName: null })}>Cancelar</Button>
+                                <Button className="bg-red-600 hover:bg-red-700 text-white border-red-600" onClick={handleDeleteCircle}>Si, Eliminar</Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* History Modal / Overlay */}
             {selectedCircle && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedCircle(null)}>
                     <div
-                        className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
+                        className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] overflow-hidden flex flex-col"
                         onClick={e => e.stopPropagation()}
                     >
                         <div className="p-4 border-b flex items-center justify-between bg-slate-50">
@@ -340,67 +667,109 @@ const Circulos = () => {
                             </Button>
                         </div>
 
-                        <div className="p-6 overflow-y-auto">
-                            <div className="relative border-l-2 border-slate-200 ml-3 space-y-8 pl-6 py-2">
-                                {(history[selectedCircle] || []).slice().reverse().map((item, idx) => (
-                                    <div key={item.id} className="relative group">
-                                        <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${getActivityColor(item.activity).split(' ')[1] || 'bg-slate-300'}`}></div>
+                        <div className="flex-1 overflow-auto p-0">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-0 h-full">
+                                {/* Activity History Column */}
+                                <div className="p-6 border-r border-slate-100 overflow-y-auto">
+                                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Actividades</h3>
+                                    <div className="relative border-l-2 border-slate-200 ml-3 space-y-8 pl-6 py-2">
+                                        {(history[selectedCircle] || []).slice().reverse().map((item, idx) => (
+                                            <div key={item.id} className="relative group">
+                                                <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${getActivityColor(item.activity).split(' ')[1] || 'bg-slate-300'}`}></div>
 
-                                        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 hover:border-slate-300 transition-colors relative">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="flex flex-col gap-1">
-                                                    <h3 className={`font-bold text-sm px-2 py-0.5 rounded-md w-fit ${getActivityColor(item.activity)}`}>
-                                                        {item.activity || 'Sin actividad'}
-                                                    </h3>
-                                                    {/* Show alert in history if present */}
-                                                    {item.alert && (
-                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border w-fit ${getAlertBadgeColor(item.alert)}`}>
-                                                            <AlertTriangle className="h-3 w-3 inline mr-1" />
-                                                            {item.alert}
-                                                        </span>
+                                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-100 hover:border-slate-300 transition-colors relative">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div className="flex flex-col gap-1">
+                                                            <h3 className={`font-bold text-sm px-2 py-0.5 rounded-md w-fit ${getActivityColor(item.activity)}`}>
+                                                                {item.activity || 'Sin actividad'}
+                                                            </h3>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${getSituationBadgeColor(item.situation)}`}>
+                                                                {item.situation}
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    deleteHistoryItem(selectedCircle, item.id, 'activity');
+                                                                }}
+                                                                className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                                                                title="Eliminar registro"
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Display Enfardado Data */}
+                                                    {item.activity === 'Enfardado' && (item.quantity || item.weight || item.quality) && (
+                                                        <div className="mt-2 text-xs font-bold text-slate-700 bg-purple-50 p-2 rounded border border-purple-100 dark:bg-purple-900/20 dark:border-purple-800 dark:text-purple-300 flex gap-3 flex-wrap">
+                                                            {item.quantity && <span>📦 {item.quantity} un.</span>}
+                                                            {item.weight && <span>⚖️ {item.weight} kg</span>}
+                                                            {item.quality && <span>⭐ {item.quality}</span>}
+                                                        </div>
                                                     )}
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${getSituationBadgeColor(item.situation)}`}>
-                                                        {item.situation}
-                                                    </span>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            deleteHistoryItem(selectedCircle, item.id);
-                                                        }}
-                                                        className="text-slate-400 hover:text-red-500 transition-colors p-1"
-                                                        title="Eliminar registro"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
+
+                                                    <div className="grid grid-cols-2 gap-4 text-xs text-slate-500 mt-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <Calendar className="h-3 w-3" />
+                                                            <span>Inicio: {formatDate(item.startDate)} <span className="text-slate-400 ml-1">{formatTime(item.startDate)}</span></span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            {item.endDate ? (
+                                                                <>
+                                                                    <div className="w-3 flex justify-center"><ArrowRight className="h-3 w-3" /></div>
+                                                                    <span>Fin: {formatDate(item.endDate)} <span className="text-slate-400 ml-1">{formatTime(item.endDate)}</span></span>
+                                                                </>
+                                                            ) : (
+                                                                <span className="text-emerald-600 font-medium flex items-center gap-1">
+                                                                    <Clock className="h-3 w-3" /> En curso
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             </div>
-
-                                            <div className="grid grid-cols-2 gap-4 text-xs text-slate-500 mt-3">
-                                                <div className="flex items-center gap-2">
-                                                    <Calendar className="h-3 w-3" />
-                                                    <span>Inicio: {formatDate(item.startDate)} <span className="text-slate-400 ml-1">{formatTime(item.startDate)}</span></span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    {item.endDate ? (
-                                                        <>
-                                                            <div className="w-3 flex justify-center"><ArrowRight className="h-3 w-3" /></div>
-                                                            <span>Fin: {formatDate(item.endDate)} <span className="text-slate-400 ml-1">{formatTime(item.endDate)}</span></span>
-                                                        </>
-                                                    ) : (
-                                                        <span className="text-emerald-600 font-medium flex items-center gap-1">
-                                                            <Clock className="h-3 w-3" /> En curso
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
+                                        ))}
+                                        {(history[selectedCircle] || []).length === 0 && (
+                                            <p className="text-center text-slate-400 py-8">No hay actividades registradas.</p>
+                                        )}
                                     </div>
-                                ))}
-                                {(history[selectedCircle] || []).length === 0 && (
-                                    <p className="text-center text-slate-400 py-8">No hay historial registrado.</p>
-                                )}
+                                </div>
+
+                                {/* Status History Column */}
+                                <div className="p-6 bg-slate-50/50 overflow-y-auto">
+                                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">Historial de Estado</h3>
+                                    <div className="space-y-4">
+                                        {(statusHistory[selectedCircle] || []).slice().reverse().map((item, idx) => (
+                                            <div key={item.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex  justify-between items-center">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-2 h-2 rounded-full ${getStatusColor(item.status).includes('emerald') ? 'bg-emerald-500' :
+                                                        getStatusColor(item.status).includes('amber') ? 'bg-amber-500' :
+                                                            getStatusColor(item.status).includes('red') ? 'bg-red-500' : 'bg-slate-300'
+                                                        }`}></div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-slate-700">{item.status || 'Normal'}</p>
+                                                        <p className="text-xs text-slate-400">{formatDate(item.date)} {formatTime(item.date)}</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        deleteHistoryItem(selectedCircle, item.id, 'status');
+                                                    }}
+                                                    className="text-slate-300 hover:text-red-500 transition-colors p-1"
+                                                    title="Eliminar registro"
+                                                >
+                                                    <Trash2 className="h-3 w-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {(statusHistory[selectedCircle] || []).length === 0 && (
+                                            <p className="text-center text-slate-400 py-8">No hay cambios de estado registrados.</p>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

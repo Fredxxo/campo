@@ -6,6 +6,7 @@ import Circulos from './pages/Circulos';
 import Taller from './pages/Taller';
 import Riego from './pages/Riego';
 import Ventas from './pages/Ventas';
+import Estadisticas from './pages/Estadisticas';
 
 import Login from './pages/Login';
 import PrivateRoute from './components/PrivateRoute';
@@ -26,6 +27,7 @@ function App() {
                   <Route path="/taller" element={<Taller />} />
                   <Route path="/riego" element={<Riego />} />
                   <Route path="/ventas" element={<Ventas />} />
+                  <Route path="/estadisticas" element={<Estadisticas />} />
                 </Routes>
               </Layout>
             </PrivateRoute>

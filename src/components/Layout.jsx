@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Circle, Wrench, Droplets, DollarSign, Menu, X } from 'lucide-react';
+import { Home, Circle, Wrench, Droplets, DollarSign, Menu, X, BarChart3 } from 'lucide-react';
 
 const Layout = ({ children }) => {
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
@@ -12,6 +12,7 @@ const Layout = ({ children }) => {
         { name: 'Taller', href: '/taller', icon: Wrench },
         { name: 'Riego', href: '/riego', icon: Droplets },
         { name: 'Ventas', href: '/ventas', icon: DollarSign },
+        { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
     ];
 
     const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
