@@ -6,8 +6,8 @@ import useRole from '../hooks/useRole';
 
 // Rutas permitidas por rol
 const ROLE_ROUTES = {
-    admin: ['/', '/circulos', '/taller', '/riego', '/ventas', '/estadisticas', '/admin'],
-    circulos: ['/circulos'],
+    admin: ['/', '/circulos', '/taller', '/riego', '/ventas', '/estadisticas', '/admin', '/mapa'],
+    circulos: ['/circulos', '/mapa'],
     taller: ['/taller'],
     riego: ['/riego'],
     ventas: ['/ventas'],

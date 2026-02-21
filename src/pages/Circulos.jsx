@@ -241,10 +241,18 @@ const Circulos = () => {
         const lastActivity = lastItem.activity || '';
         const currentStatus = getCurrentStatus(circuloName);
 
+        const isLogisticaEnabled =
+            ['Listo para cortar', 'Cortar urgente', 'Pasado'].includes(currentStatus) ||
+            (lastItem.activity === 'Enfardado' && lastItem.situation === 'Finalizado') ||
+            !lastItem.activity;
+
         // Process Constraints
-        if (newActivity === 'Corte') {
-            // Optional: Require a status to start? For now, allow it.
-        } else if (newActivity === 'Rastrillado') {
+        if (newActivity && newActivity !== 'En crecimiento' && !isLogisticaEnabled) {
+            alert("Atención: Primero debes clasificar el lote arriba a la derecha (ej. 'Listo para cortar') antes de asignar logística.");
+            return;
+        }
+
+        if (newActivity === 'Rastrillado') {
             if (lastActivity !== 'Corte') {
                 alert("Solo se puede Rastrillar después de Cortar.");
                 return;
@@ -267,6 +275,18 @@ const Circulos = () => {
     const handleMachineryChange = (circuloName, newMachinery) => {
         const currentHistory = history[circuloName] || [];
         if (currentHistory.length === 0) return;
+        const lastItem = currentHistory[currentHistory.length - 1];
+        const currentStatus = getCurrentStatus(circuloName);
+
+        const isLogisticaEnabled =
+            ['Listo para cortar', 'Cortar urgente', 'Pasado'].includes(currentStatus) ||
+            (lastItem.activity === 'Enfardado' && lastItem.situation === 'Finalizado') ||
+            !lastItem.activity;
+
+        if (newMachinery && (!lastItem.activity || lastItem.activity === 'En crecimiento' || !isLogisticaEnabled)) {
+            alert("No se puede asignar maquinaria en la etapa de monitoreo ('En crecimiento') o sin una actividad válida.");
+            return;
+        }
 
         const list = [...currentHistory];
         const lastIndex = list.length - 1;
@@ -539,20 +559,19 @@ const Circulos = () => {
                                         >
                                             <option value="">Seleccionar...</option>
                                             <option value="En crecimiento">En crecimiento</option>
-                                            <option value="Corte" disabled={!isLogisticaEnabled}>Corte</option>
-                                            <option value="Rastrillado" disabled={!isLogisticaEnabled}>Rastrillado</option>
-                                            <option value="Enfardado" disabled={!isLogisticaEnabled}>Enfardado</option>
+                                            <option value="Corte">Corte</option>
+                                            <option value="Rastrillado">Rastrillado</option>
+                                            <option value="Enfardado">Enfardado</option>
                                         </select>
                                     </div>
 
                                     <div>
                                         <label className="text-xs font-medium text-campo-beige-600 block mb-1">Maquinaria</label>
                                         <select
-                                            className="w-full text-xs border-campo-beige-300 rounded-md p-2 bg-campo-beige-50 focus:ring-2 focus:ring-campo-green-500 focus:border-campo-green-500 transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="w-full text-xs border-campo-beige-300 rounded-md p-2 bg-campo-beige-50 focus:ring-2 focus:ring-campo-green-500 focus:border-campo-green-500 transition-shadow"
                                             value={currentState.machinery || ''}
                                             onChange={(e) => handleMachineryChange(circulo.name, e.target.value)}
                                             onClick={(e) => e.stopPropagation()}
-                                            disabled={!currentState.activity || currentState.activity === 'En crecimiento'}
                                         >
                                             <option value="">Sin asignar</option>
                                             <option value="Tractor">Tractor</option>

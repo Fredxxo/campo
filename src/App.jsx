@@ -8,6 +8,7 @@ import Riego from './pages/Riego';
 import Ventas from './pages/Ventas';
 import Estadisticas from './pages/Estadisticas';
 import Admin from './pages/Admin';
+import Mapa from './pages/Mapa';
 
 import Login from './pages/Login';
 import PrivateRoute from './components/PrivateRoute';
@@ -30,6 +31,7 @@ function App() {
                   <Route path="/ventas" element={<Ventas />} />
                   <Route path="/estadisticas" element={<Estadisticas />} />
                   <Route path="/admin" element={<Admin />} />
+                  <Route path="/mapa" element={<Mapa />} />
                 </Routes>
               </Layout>
             </PrivateRoute>

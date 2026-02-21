@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Circle, Wrench, Droplets, DollarSign, Menu, X, BarChart3, LogOut, ShieldCheck } from 'lucide-react';
+import { Home, Circle, Wrench, Droplets, DollarSign, Menu, X, BarChart3, LogOut, ShieldCheck, Map } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import useRole from '../hooks/useRole';
@@ -14,6 +14,7 @@ const ALL_NAVIGATION = [
     { name: 'Ventas', href: '/ventas', icon: DollarSign },
     { name: 'Estadísticas', href: '/estadisticas', icon: BarChart3 },
     { name: 'Administración', href: '/admin', icon: ShieldCheck },
+    { name: 'Mapa', href: '/mapa', icon: Map },
 ];
 
 const ROLE_LABELS = {
