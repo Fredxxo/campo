@@ -1,128 +1,381 @@
-import React, { useState } from 'react';
-import mapaImg from '../assets/mapa.jpg'; // Asegúrate de reemplazar esta imagen con la foto satelital real
-import { Info, Map as MapIcon, Navigation } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { Info, Map as MapIcon, Navigation, CheckCircle2, AlertTriangle, Route } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { Button } from '../components/ui/Button';
 
-// Coordenadas aproximadas basadas en la foto proporcionada. (top, left as percentages)
-// Se pueden ajustar para que coincidan perfectamente con tu imagen después de colocar el archivo.
-const MARKERS = [
-    { id: 1, top: '86%', left: '16%' },
-    { id: 2, top: '78%', left: '21%' },
-    { id: 3, top: '70%', left: '28%' },
-    { id: 4, top: '62%', left: '42%' },
-    { id: 5, top: '48%', left: '46%' },
-    { id: 6, top: '36%', left: '55%' },
-    { id: 7, top: '44%', left: '35%' },
-    { id: 8, top: '38%', left: '26%' },
-    { id: 9, top: '34%', left: '42%' },
-    { id: 10, top: '28%', left: '32%' },
-    { id: 11, top: '26%', left: '46%' },
-    { id: 12, top: '20%', left: '36%' },
-    { id: 14, top: '10%', left: '46%' },
-    { id: 15, top: '66%', left: '60%' },
-    { id: 16, top: '74%', left: '76%' },
-    { id: 17, top: '80%', left: '88%' },
-];
+// Fix for default Leaflet icon not showing correctly in React
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
-const Mapa = () => {
-    const [activeMarker, setActiveMarker] = useState(null);
+// Create Custom DivIcon factory for our "Círculos"
+const createCircleIcon = (circleNumber, colorClass) => {
+    return L.divIcon({
+        className: 'custom-circle-marker',
+        html: `
+      <div class="relative flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-white rounded-full shadow-[0_4px_10px_rgba(0,0,0,0.5)] border-4 border-white transform -translate-x-1/2 -translate-y-1/2 group transition-transform hover:scale-110">
+        <div class="absolute inset-0 rounded-full opacity-80 ${colorClass}"></div>
+        <span class="relative z-10 font-bold text-gray-900 text-lg md:text-xl">${circleNumber}</span>
+      </div>
+    `,
+        iconSize: [48, 48],
+        iconAnchor: [24, 24],
+        popupAnchor: [0, -24],
+    });
+};
+
+const DEFAULT_CENTER = [-33.2450, -68.1560]; // Santa Rosa, Mendoza (prox)
+
+const statusColors = {
+    'Listo para cortar': 'bg-emerald-500',
+    'Cortar urgente': 'bg-amber-500',
+    'Pasado': 'bg-red-500',
+    'Normal': 'bg-campo-green-500',
+};
+
+const activityColors = {
+    'En crecimiento': 'bg-campo-green-400',
+    'Corte': 'bg-amber-400',
+    'Rastrillado': 'bg-orange-400',
+    'Enfardado': 'bg-purple-400',
+    'Sin actividad': 'bg-gray-400'
+};
+
+const ALLOWED_MARKERS = ['1', '2', '3', '4', '5', '9', '11', '14', '15', '17', '18'];
+
+const DraggableMarker = ({ circulo, isEditMode, updatePosition }) => {
+    const [position, setPosition] = useState(circulo.position || DEFAULT_CENTER);
+    const markerRef = useRef(null);
+
+    // To avoid unnecesary renders while dragging, handle it in Leaflet events
+    const eventHandlers = useMemo(
+        () => ({
+            dragend() {
+                const marker = markerRef.current;
+                if (marker != null) {
+                    const newPos = marker.getLatLng();
+                    setPosition(newPos);
+                    updatePosition(circulo, { lat: newPos.lat, lng: newPos.lng });
+                }
+            },
+        }),
+        [circulo, updatePosition],
+    );
+
+    // Sync state if firebase changes
+    useEffect(() => {
+        if (circulo.position) {
+            setPosition(circulo.position);
+        }
+    }, [circulo.position]);
+
+    const currentStatus = circulo.status || 'Normal';
+    const currentActivity = circulo.activity || 'Sin actividad';
+
+    // Decide what color to show. Status Alert overrides Activity color
+    const colorClass = (currentStatus !== 'Normal' && currentStatus !== '')
+        ? statusColors[currentStatus] || statusColors['Normal']
+        : activityColors[currentActivity] || activityColors['Sin actividad'];
+
+    const icon = createCircleIcon(circulo.name, colorClass);
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <Marker
+            draggable={isEditMode}
+            eventHandlers={eventHandlers}
+            position={position}
+            ref={markerRef}
+            icon={icon}
+            zIndexOffset={isEditMode ? 1000 : 0} // Traer al frente al editar
+        >
+            <Popup className="custom-popup">
+                <div className="p-1 min-w-[200px]">
+                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">
+                        <div className={`w-3 h-3 rounded-full ${colorClass}`}></div>
+                        <h3 className="font-bold text-lg text-gray-800 m-0 leading-none">Círculo {circulo.name}</h3>
+                    </div>
+
+                    <div className="space-y-1.5 text-sm mt-3">
+                        <div className="flex justify-between items-center">
+                            <span className="text-gray-500">Lotes:</span>
+                            <span className="font-medium text-right ml-2 bg-gray-100 px-1.5 py-0.5 rounded text-[10px] leading-tight max-w-[120px] truncate" title={circulo.originalNames?.join(', ')}>
+                                {circulo.originalNames?.join(', ')}
+                            </span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Alertas conjuntas:</span>
+                            <span className="font-medium px-2 py-0.5 rounded text-xs bg-gray-100">{currentStatus || 'Normal'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Actividad:</span>
+                            <span className="font-medium text-right ml-2 truncate max-w-[100px]">{currentActivity}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-gray-500">Has. Totales:</span>
+                            <span className="font-medium">{circulo.hectares || '-'} ha</span>
+                        </div>
+                    </div>
+
+                    {isEditMode && (
+                        <div className="mt-3 pt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded border border-blue-100 text-center font-bold">
+                            📍 Arrástrame para guardar ubicación
+                        </div>
+                    )}
+                </div>
+            </Popup>
+        </Marker>
+    )
+};
+
+const Mapa = () => {
+    const [circulos, setCirculos] = useState([]);
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, "circles"), (snapshot) => {
+            const groups = {};
+
+            // Inicializar todos los marcadores solicitados para asegurar que aparezcan
+            ALLOWED_MARKERS.forEach(markerNumber => {
+                groups[markerNumber] = {
+                    name: markerNumber,
+                    originalNames: [],
+                    hectares: 0,
+                    position: null,
+                    statuses: new Set(),
+                    activities: new Set(),
+                };
+            });
+
+            let validCenter = null;
+
+            snapshot.forEach(doc => {
+                const c = doc.data();
+                if (!c.deleted) {
+                    // Extraer solo el número inicial del nombre (ej: "17 sur" -> "17", "15(1)" -> "15")
+                    const match = doc.id.match(/^(\d+)/);
+                    if (!match) return; // Ignorar si no empieza con número
+                    const mainNumber = match[1];
+
+                    // Filtrar solo los números principales solicitados
+                    if (!ALLOWED_MARKERS.includes(mainNumber)) return;
+
+                    // Decode current status/activity
+                    let currentStatus = '';
+                    if (c.statusHistory && c.statusHistory.length > 0) {
+                        currentStatus = c.statusHistory[c.statusHistory.length - 1].status;
+                    }
+
+                    let currentActivity = '';
+                    if (c.history && c.history.length > 0) {
+                        currentActivity = c.history[c.history.length - 1].activity;
+                    }
+
+                    if (!groups[mainNumber]) {
+                        // Solo procesar si es uno de los marcadores solicitados
+                        return;
+                    }
+
+                    const group = groups[mainNumber];
+                    group.originalNames.push(doc.id);
+                    group.hectares += (parseFloat(c.hectares) || 0);
+
+                    if (c.lat && c.lng && !group.position) {
+                        group.position = [c.lat, c.lng];
+                        if (!validCenter) validCenter = group.position;
+                    }
+
+                    if (currentStatus && currentStatus !== 'Normal') group.statuses.add(currentStatus);
+                    if (currentActivity && currentActivity !== 'Sin actividad') group.activities.add(currentActivity);
+                }
+            });
+
+            const processedData = Object.values(groups).map((group) => {
+                // Determinar el status "peor" para pintar (Pasado > Cortar urgente > Listo para cortar > Normal)
+                let finalStatus = 'Normal';
+                if (group.statuses.has('Pasado')) finalStatus = 'Pasado';
+                else if (group.statuses.has('Cortar urgente')) finalStatus = 'Cortar urgente';
+                else if (group.statuses.has('Listo para cortar')) finalStatus = 'Listo para cortar';
+
+                // Determinar actividad preferente
+                let finalActivity = 'Sin actividad';
+                if (group.activities.size > 0) {
+                    finalActivity = Array.from(group.activities)[0]; // Tomar alguna de las activas
+                }
+
+                let pos = group.position;
+                if (!pos) {
+                    const latOffset = (Math.random() - 0.5) * 0.02;
+                    const lngOffset = (Math.random() - 0.5) * 0.02;
+                    pos = [DEFAULT_CENTER[0] + latOffset, DEFAULT_CENTER[1] + lngOffset];
+                }
+
+                return {
+                    name: group.name,
+                    originalNames: group.originalNames,
+                    hectares: group.hectares > 0 ? group.hectares.toFixed(1) : 0,
+                    position: pos,
+                    status: finalStatus,
+                    activity: finalActivity,
+                    subCirclesCount: group.originalNames.length
+                };
+            });
+
+            // Sort circles just for consistency
+            processedData.sort((a, b) => parseInt(a.name) - parseInt(b.name));
+
+            setCirculos(processedData);
+            if (validCenter && !isEditMode) setMapCenter(validCenter);
+        });
+
+        return () => unsubscribe();
+    }, [isEditMode]);
+
+    const updateCirclePosition = async (circuloData, newPosition) => {
+        try {
+            // Si el lote principal no tiene subdiviones en Firebase aún, guardamos usando el nombre principal (ej: "1")
+            const namesToUpdate = circuloData.originalNames && circuloData.originalNames.length > 0
+                ? circuloData.originalNames
+                : [circuloData.name];
+
+            // Guardar la nueva posición en todos los sub-lotes (o en el principal)
+            const promises = namesToUpdate.map(name =>
+                setDoc(doc(db, "circles", name), {
+                    lat: newPosition.lat,
+                    lng: newPosition.lng,
+                    // Aseguramos que se inicie con historial vacío si es un documento nuevo
+                    history: [],
+                    statusHistory: []
+                }, { merge: true })
+            );
+            await Promise.all(promises);
+        } catch (error) {
+            console.error("Error updating position:", error);
+        }
+    };
+
+    return (
+        <div className="space-y-6 flex flex-col h-[calc(100vh-8rem)]">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
                 <div>
                     <h1 className="text-2xl font-bold text-campo-carbon-800 flex items-center gap-2">
                         <MapIcon className="text-campo-green-700" size={28} />
-                        Mapa de Círculos
+                        Mapa Interactivo de Círculos
                     </h1>
                     <p className="text-campo-beige-600 mt-1">
-                        Vista interactiva del establecimiento y distribución de los lotes.
+                        Vista satelital real del establecimiento agrícola para gestión espacial.
                     </p>
                 </div>
 
-                <div className="bg-campo-green-50 p-4 rounded-xl border border-campo-green-200 flex items-start gap-3 max-w-md">
-                    <Info className="text-campo-green-700 shrink-0 mt-0.5" size={20} />
-                    <div className="text-sm text-campo-green-900">
-                        <strong>Modo premium interactivo:</strong> La imagen se ha mejorado mediante filtros. Asegurate de subir la foto satelital en <code className="bg-campo-green-200 px-1 rounded">src/assets/mapa.jpg</code> para ver tu campo aquí.
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                    <div className="bg-campo-green-50 px-4 py-2.5 rounded-xl border border-campo-green-200 flex items-center gap-3">
+                        <Info className="text-campo-green-700 flex-shrink-0" size={20} />
+                        <span className="text-sm text-campo-carbon-700 leading-tight">
+                            {!isEditMode
+                                ? <span>Haz clic en "Ubicar Círculos" central para arrastrar cada lote a su lugar.</span>
+                                : <span><strong>Modo Edición:</strong> Arrastra cada ícono a su lugar. El GPS se guarda solo.</span>}
+                        </span>
                     </div>
+
+                    <Button
+                        onClick={() => setIsEditMode(!isEditMode)}
+                        className={`whitespace-nowrap px-6 py-2.5 h-auto text-sm font-bold shadow-lg transition-all duration-300 ${isEditMode ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500 shadow-amber-500/30 ring-2 ring-amber-500 ring-offset-2' : 'bg-campo-green-600 hover:bg-campo-green-700 text-white shadow-campo-green-600/30'}`}
+                    >
+                        {isEditMode ? (
+                            <><CheckCircle2 className="mr-2 h-4 w-4" /> Finalizar</>
+                        ) : (
+                            <><Route className="mr-2 h-4 w-4" /> Ubicar Círculos</>
+                        )}
+                    </Button>
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-campo-beige-200 overflow-hidden relative group">
-
-                {/* Contenedor del Mapa con proporción */}
-                <div className="relative w-full aspect-[3/4] md:aspect-[4/3] lg:aspect-[16/9] bg-campo-green-900 overflow-hidden flex items-center justify-center">
-
-                    {/* Imagen de fondo con filtros CSS para look "premium" y de marca */}
-                    <div className="absolute inset-0 w-full h-full mix-blend-luminosity opacity-80 z-0 bg-campo-carbon-900">
-                        <img
-                            src={mapaImg}
-                            alt="Mapa Satelital del Campo"
-                            className="w-full h-full object-cover sepia-[.3] contrast-125 saturate-50 transition-transform duration-1000 group-hover:scale-105"
-                            onError={(e) => {
-                                // Fallback visual en caso de que aún no exista la imagen real
-                                e.target.style.display = 'none';
-                                e.target.parentElement.classList.add('bg-[url("https://images.unsplash.com/photo-1500382017468-9049fed747ef?q=80&w=2689")]', 'bg-cover', 'bg-center');
-                            }}
+            <div className="bg-white rounded-2xl shadow-sm border border-campo-beige-200 overflow-hidden relative flex-1 min-h-[400px]">
+                {circulos.length > 0 ? (
+                    <MapContainer
+                        center={mapCenter}
+                        zoom={14}
+                        scrollWheelZoom={true}
+                        style={{ height: '100%', width: '100%', zIndex: 10 }}
+                        className="leaflet-map-wrapper bg-campo-green-950"
+                    >
+                        {/* Esri World Imagery (High Resolution Satellite) */}
+                        <TileLayer
+                            attribution='&copy; <a href="https://www.esri.com/">Esri</a>, i-cubed, USDA, USGS, IGN, IGP, UPR-EGP, and the GIS User Community'
+                            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            maxZoom={18}
                         />
-                        {/* Overlay de gradiente para darle profundidad y lectura clara al mapa */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-campo-green-950/80 via-campo-green-900/20 to-transparent"></div>
+
+                        {circulos.map((circulo) => (
+                            <DraggableMarker
+                                key={circulo.name}
+                                circulo={circulo}
+                                isEditMode={isEditMode}
+                                updatePosition={updateCirclePosition}
+                            />
+                        ))}
+                    </MapContainer>
+                ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 flex-col gap-4">
+                        <div className="w-12 h-12 border-4 border-campo-green-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-gray-500 font-medium">Cargando mapa interactivo y conectando con el satélite...</p>
                     </div>
+                )}
 
-                    {/* Renderizado de Marcadores */}
-                    {MARKERS.map((marker) => (
-                        <div
-                            key={marker.id}
-                            className="absolute z-10"
-                            style={{ top: marker.top, left: marker.left }}
-                            onMouseEnter={() => setActiveMarker(marker.id)}
-                            onMouseLeave={() => setActiveMarker(null)}
-                        >
-                            <div
-                                className={`
-                  relative transform -translate-x-1/2 -translate-y-1/2 
-                  w-10 h-10 md:w-14 md:h-14 
-                  rounded-full flex items-center justify-center font-bold text-lg md:text-xl
-                  cursor-pointer transition-all duration-300 shadow-[0_4px_20px_rgba(0,0,0,0.5)]
-                  backdrop-blur-md
-                  ${activeMarker === marker.id
-                                        ? 'scale-125 bg-campo-beige-100 text-campo-green-900 border-2 border-campo-green-700 z-50'
-                                        : 'bg-campo-green-900/70 border border-campo-beige-300/50 text-white hover:bg-campo-green-700'
-                                    }
-                `}
-                            >
-                                {marker.id}
-
-                                {/* Tooltip Dinámico */}
-                                <div className={`
-                    absolute top-full lg:left-full lg:top-1/2 lg:-translate-y-1/2 mt-3 lg:mt-0 lg:ml-4 bg-white text-left p-3 rounded-lg shadow-xl shadow-campo-green-900/20 text-campo-carbon-800 text-sm whitespace-nowrap border border-campo-beige-200 transition-all duration-300
-                    ${activeMarker === marker.id ? 'opacity-100 translate-y-0 visible scale-100' : 'opacity-0 translate-y-2 invisible scale-95'}
-                  `}>
-                                    <div className="font-bold text-campo-green-800 text-base mb-1 flex items-center gap-1.5">
-                                        <Navigation size={14} className="text-campo-beige-500" />
-                                        Círculo {marker.id}
-                                    </div>
-                                    <div className="text-campo-beige-600 flex flex-col gap-0.5">
-                                        <span>• Área activa</span>
-                                        <span>• Ver detalles del lote</span>
-                                    </div>
-                                    <div className="mt-2 w-full h-1 bg-campo-beige-200 rounded-full overflow-hidden">
-                                        <div className="h-full bg-campo-green-500 w-3/4"></div>
-                                    </div>
-                                </div>
-                            </div>
+                {/* Legend Overlay */}
+                <div className="absolute bottom-6 left-6 z-[400] bg-white/95 backdrop-blur-md p-4 rounded-xl shadow-xl shadow-black/10 border border-gray-200 pointer-events-none transition-opacity duration-300">
+                    <h4 className="font-bold text-sm text-gray-800 mb-3 border-b pb-2">Referencia de Colores</h4>
+                    <div className="space-y-2.5">
+                        <div className="flex items-center gap-2.5">
+                            <div className={`w-3.5 h-3.5 rounded-full ${statusColors['Listo para cortar']}`}></div>
+                            <span className="text-xs font-medium text-gray-700">Listo para cortar</span>
                         </div>
-                    ))}
-
-                    {/* Título y leyenda integrada en la imagen */}
-                    <div className="absolute bottom-6 left-6 z-0 text-white pointer-events-none drop-shadow-md hidden md:block">
-                        <h2 className="text-3xl font-bold tracking-tight text-campo-beige-100">Bodega El Retiro</h2>
-                        <p className="text-campo-beige-300 flex items-center gap-2 mt-1">
-                            <MapIcon size={16} />
-                            La Salada de Cuyo
-                        </p>
+                        <div className="flex items-center gap-2.5">
+                            <div className={`w-3.5 h-3.5 rounded-full ${statusColors['Cortar urgente']}`}></div>
+                            <span className="text-xs font-medium text-gray-700">Cortar urgente</span>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                            <div className={`w-3.5 h-3.5 rounded-full ${activityColors['En crecimiento']}`}></div>
+                            <span className="text-xs font-medium text-gray-700">En Crecimiento / Regando</span>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                            <div className={`w-3.5 h-3.5 rounded-full ${activityColors['Corte']}`}></div>
+                            <span className="text-xs font-medium text-gray-700">En Tareas (Rastrillado, Fardo)</span>
+                        </div>
                     </div>
                 </div>
             </div>
+
+            <style jsx="true">{`
+              .leaflet-container {
+                font-family: inherit;
+              }
+              .custom-circle-marker {
+                background: transparent;
+                border: none;
+              }
+              .custom-popup .leaflet-popup-content-wrapper {
+                 border-radius: 12px;
+                 padding: 0;
+                 overflow: hidden;
+                 box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+              }
+              .custom-popup .leaflet-popup-content {
+                 margin: 14px 16px;
+                 line-height: 1.4;
+              }
+              .custom-popup .leaflet-popup-tip-container {
+                 margin-top: -1px;
+              }
+            `}</style>
         </div>
     );
 };
