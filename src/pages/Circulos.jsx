@@ -274,7 +274,8 @@ const Circulos = () => {
         updateCircleData(circuloName, { history: newHistory });
     };
 
-    const handleMachineryChange = (circuloName, newMachinery) => {
+    const handleAddMachinery = (circuloName, newMachinery) => {
+        if (!newMachinery) return;
         const currentHistory = history[circuloName] || [];
         if (currentHistory.length === 0) return;
         const lastItem = currentHistory[currentHistory.length - 1];
@@ -285,7 +286,7 @@ const Circulos = () => {
             (lastItem.activity === 'Enfardado' && lastItem.situation === 'Finalizado') ||
             !lastItem.activity;
 
-        if (newMachinery && (!lastItem.activity || lastItem.activity === 'En crecimiento' || !isLogisticaEnabled)) {
+        if ((!lastItem.activity || lastItem.activity === 'En crecimiento' || !isLogisticaEnabled)) {
             alert("No se puede asignar maquinaria en la etapa de monitoreo ('En crecimiento') o sin una actividad válida.");
             return;
         }
@@ -293,12 +294,45 @@ const Circulos = () => {
         const list = [...currentHistory];
         const lastIndex = list.length - 1;
 
-        // Update the current activity's machinery in-place
-        list[lastIndex] = { ...list[lastIndex], machinery: newMachinery };
+        let currentMachinery = list[lastIndex].machinery;
+        let machineryArray = [];
+        if (Array.isArray(currentMachinery)) {
+            machineryArray = [...currentMachinery];
+        } else if (currentMachinery && typeof currentMachinery === 'string') {
+            machineryArray = [currentMachinery];
+        }
 
-        if (newMachinery && list[lastIndex].activity && list[lastIndex].activity !== 'En crecimiento') {
+        if (!machineryArray.includes(newMachinery)) {
+            machineryArray.push(newMachinery);
+        }
+
+        list[lastIndex] = { ...list[lastIndex], machinery: machineryArray };
+
+        if (list[lastIndex].activity && list[lastIndex].activity !== 'En crecimiento') {
             list[lastIndex].situation = 'En Proceso';
         }
+
+        updateCircleData(circuloName, { history: list });
+    };
+
+    const handleRemoveMachinery = (circuloName, machineryToRemove) => {
+        const currentHistory = history[circuloName] || [];
+        if (currentHistory.length === 0) return;
+
+        const list = [...currentHistory];
+        const lastIndex = list.length - 1;
+
+        let currentMachinery = list[lastIndex].machinery;
+        let machineryArray = [];
+        if (Array.isArray(currentMachinery)) {
+            machineryArray = [...currentMachinery];
+        } else if (currentMachinery && typeof currentMachinery === 'string') {
+            machineryArray = [currentMachinery];
+        }
+
+        machineryArray = machineryArray.filter(m => m !== machineryToRemove);
+
+        list[lastIndex] = { ...list[lastIndex], machinery: machineryArray.length > 0 ? machineryArray : null };
 
         updateCircleData(circuloName, { history: list });
     };
@@ -578,13 +612,32 @@ const Circulos = () => {
 
                                     <div>
                                         <label className="text-xs font-medium text-campo-beige-600 block mb-1">Maquinaria</label>
+                                        {currentState.machinery && (
+                                            <div className="flex flex-wrap gap-1 mb-2">
+                                                {(Array.isArray(currentState.machinery) ? currentState.machinery : [currentState.machinery]).map(m => {
+                                                    const isBroken = currentState.situation === 'Frenado' && currentState.pauseReason && currentState.pauseReason.includes(`Rotura de ${m}`);
+                                                    return (
+                                                        <span key={m} className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${isBroken ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-campo-beige-200 text-campo-carbon-700'
+                                                            }`}>
+                                                            {m}
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); handleRemoveMachinery(circulo.name, m); }}
+                                                                className={isBroken ? "text-red-400 hover:text-red-700" : "text-campo-carbon-500 hover:text-red-500"}
+                                                            >
+                                                                <X className="h-3 w-3" />
+                                                            </button>
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
                                         <select
                                             className="w-full text-xs border-campo-beige-300 rounded-md p-2 bg-campo-beige-50 focus:ring-2 focus:ring-campo-green-500 focus:border-campo-green-500 transition-shadow"
-                                            value={currentState.machinery || ''}
-                                            onChange={(e) => handleMachineryChange(circulo.name, e.target.value)}
+                                            value=""
+                                            onChange={(e) => handleAddMachinery(circulo.name, e.target.value)}
                                             onClick={(e) => e.stopPropagation()}
                                         >
-                                            <option value="">Sin asignar</option>
+                                            <option value="">Agregar maquinaria...</option>
                                             <option value="Tractor">Tractor</option>
                                             <option value="Segadora">Segadora</option>
                                             <option value="Rastrillo">Rastrillo</option>
@@ -796,9 +849,17 @@ const Circulos = () => {
                                                                     {item.activity || 'Sin actividad'}
                                                                 </h3>
                                                                 {item.machinery && (
-                                                                    <span className="text-xs text-campo-carbon-600 flex items-center gap-1 mt-1 font-medium bg-campo-beige-100 px-2 py-0.5 rounded-full w-fit border border-campo-beige-200">
-                                                                        🚜 {item.machinery}
-                                                                    </span>
+                                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                                        {(Array.isArray(item.machinery) ? item.machinery : [item.machinery]).map(m => {
+                                                                            const isBroken = item.situation === 'Frenado' && item.pauseReason && item.pauseReason.includes(`Rotura de ${m}`);
+                                                                            return (
+                                                                                <span key={m} className={`text-xs flex items-center gap-1 font-medium px-2 py-0.5 rounded-full w-fit border ${isBroken ? 'bg-red-100 text-red-700 border-red-200' : 'bg-campo-beige-100 text-campo-carbon-600 border-campo-beige-200'
+                                                                                    }`}>
+                                                                                    🚜 {m}
+                                                                                </span>
+                                                                            );
+                                                                        })}
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                             <div className="flex items-center gap-2">

@@ -8,6 +8,7 @@ import { collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc, deleteD
 const Taller = () => {
     const [maintenanceItems, setMaintenanceItems] = useState([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [itemToDelete, setItemToDelete] = useState(null);
     const [newItem, setNewItem] = useState({
         description: '',
         category: '',
@@ -123,7 +124,7 @@ const Taller = () => {
                                 machinery: lastItem.machinery, // keeping the machinery assigned
                                 startDate: now,
                                 endDate: null,
-                                pauseReason: `Rotura de maquinaria en Taller. ${newItem.description}`,
+                                pauseReason: `Rotura de ${newItem.category} en Taller. ${newItem.description}`,
                                 tallerItemId: docRef.id
                             });
 
@@ -149,55 +150,64 @@ const Taller = () => {
         }
     };
 
-    const handleDeleteItem = async (itemOrId) => {
-        if (window.confirm('¿Estás seguro de eliminar esta entrada?')) {
-            try {
-                const itemId = typeof itemOrId === 'string' ? itemOrId : itemOrId.id;
-                const item = typeof itemOrId === 'string' ? maintenanceItems.find(i => i.id === itemOrId) : itemOrId;
+    const handleDeleteItem = (itemOrId) => {
+        const item = typeof itemOrId === 'string' ? maintenanceItems.find(i => i.id === itemOrId) : itemOrId;
+        if (item) {
+            setItemToDelete(item);
+        } else {
+            console.error("Item no encontrado para borrar: ", itemOrId);
+        }
+    };
 
-                // Si el ticket detuvo un círculo, lo reanudamos antes de borrar el ticket
-                if (item && item.sector && circles.includes(item.sector)) {
-                    const circleRef = doc(db, "circles", item.sector);
-                    const circleSnap = await getDoc(circleRef);
+    const confirmDelete = async () => {
+        if (!itemToDelete) return;
 
-                    if (circleSnap.exists()) {
-                        const circleData = circleSnap.data();
-                        const history = circleData.history || [];
+        try {
+            const itemId = itemToDelete.id;
 
-                        if (history.length > 0) {
-                            const lastItem = history[history.length - 1];
-                            if (lastItem.situation === 'Frenado' && lastItem.tallerItemId === itemId) {
-                                const resumeNow = new Date().toISOString();
-                                const updatedHistory = [...history];
+            // Si el ticket detuvo un círculo, lo reanudamos antes de borrar el ticket
+            if (itemToDelete.sector && circles.includes(itemToDelete.sector)) {
+                const circleRef = doc(db, "circles", itemToDelete.sector);
+                const circleSnap = await getDoc(circleRef);
 
-                                updatedHistory[updatedHistory.length - 1] = {
-                                    ...lastItem,
-                                    endDate: resumeNow
-                                };
+                if (circleSnap.exists()) {
+                    const circleData = circleSnap.data();
+                    const history = circleData.history || [];
 
-                                updatedHistory.push({
-                                    id: Date.now(),
-                                    activity: lastItem.activity,
-                                    situation: 'En Proceso',
-                                    alert: lastItem.alert,
-                                    machinery: lastItem.machinery,
-                                    startDate: resumeNow,
-                                    endDate: null,
-                                    pauseReason: null,
-                                    tallerItemId: null
-                                });
+                    if (history.length > 0) {
+                        const lastItem = history[history.length - 1];
+                        if (lastItem.situation === 'Frenado' && lastItem.tallerItemId === itemId) {
+                            const resumeNow = new Date().toISOString();
+                            const updatedHistory = [...history];
 
-                                await updateDoc(circleRef, { history: updatedHistory });
-                            }
+                            updatedHistory[updatedHistory.length - 1] = {
+                                ...lastItem,
+                                endDate: resumeNow
+                            };
+
+                            updatedHistory.push({
+                                id: Date.now(),
+                                activity: lastItem.activity,
+                                situation: 'En Proceso',
+                                alert: lastItem.alert,
+                                machinery: lastItem.machinery,
+                                startDate: resumeNow,
+                                endDate: null,
+                                pauseReason: null,
+                                tallerItemId: null
+                            });
+
+                            await updateDoc(circleRef, { history: updatedHistory });
                         }
                     }
                 }
-                // Borrar el documento de taller
-                await deleteDoc(doc(db, "taller", itemId));
-            } catch (error) {
-                console.error("Error al eliminar de Taller: ", error);
-                alert("Hubo un error al eliminar el ticket: " + error.message);
             }
+            // Borrar el documento de taller
+            await deleteDoc(doc(db, "taller", itemId));
+            setItemToDelete(null);
+        } catch (error) {
+            console.error("Error al eliminar de Taller: ", error);
+            alert("Hubo un error al eliminar el ticket: " + error.message);
         }
     };
 
@@ -318,7 +328,11 @@ const Taller = () => {
                                         </select>
                                     </div>
                                     <button
-                                        onClick={() => handleDeleteItem(item)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleDeleteItem(item);
+                                        }}
                                         title="Eliminar registro"
                                         className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors p-2 flex items-center justify-center"
                                     >
@@ -486,6 +500,36 @@ const Taller = () => {
                                 <Button variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
                                 <Button onClick={handleAddItem} disabled={!newItem.category || !newItem.description}>Guardar</Button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {itemToDelete && (
+                <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col p-6 items-center text-center">
+                        <div className="bg-red-100 p-3 rounded-full mb-4">
+                            <Trash2 className="h-8 w-8 text-red-600" />
+                        </div>
+                        <h2 className="text-xl font-bold text-gray-900 mb-2">¿Eliminar registro?</h2>
+                        <p className="text-sm text-gray-500 mb-6">
+                            Estás a punto de eliminar el ticket para <strong>{itemToDelete.category}</strong>. Esta acción no se puede deshacer.
+                        </p>
+                        <div className="flex gap-3 w-full">
+                            <Button
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => setItemToDelete(null)}
+                            >
+                                Cancelar
+                            </Button>
+                            <Button
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+                                onClick={confirmDelete}
+                            >
+                                Eliminar
+                            </Button>
                         </div>
                     </div>
                 </div>
