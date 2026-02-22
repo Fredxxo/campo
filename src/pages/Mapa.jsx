@@ -16,13 +16,19 @@ L.Icon.Default.mergeOptions({
 });
 
 // Create Custom DivIcon factory for our "Círculos"
-const createCircleIcon = (circleNumber, colorClass) => {
+const createCircleIcon = (circleNumber, colorClass, isUnplanted = false) => {
+    const baseClasses = isUnplanted
+        ? "bg-campo-beige-100 border-campo-beige-400 border-dashed text-campo-beige-500 shadow-none opacity-90"
+        : "bg-white border-white shadow-[0_4px_10px_rgba(0,0,0,0.5)] text-gray-900";
+
+    const innerColorClasses = isUnplanted ? "bg-transparent" : colorClass;
+
     return L.divIcon({
         className: 'custom-circle-marker',
         html: `
-      <div class="relative flex items-center justify-center w-10 h-10 md:w-12 md:h-12 bg-white rounded-full shadow-[0_4px_10px_rgba(0,0,0,0.5)] border-4 border-white transform -translate-x-1/2 -translate-y-1/2 group transition-transform hover:scale-110">
-        <div class="absolute inset-0 rounded-full opacity-80 ${colorClass}"></div>
-        <span class="relative z-10 font-bold text-gray-900 text-lg md:text-xl">${circleNumber}</span>
+      <div class="relative flex items-center justify-center w-10 h-10 md:w-12 md:h-12 rounded-full border-4 transform -translate-x-1/2 -translate-y-1/2 group transition-transform hover:scale-110 ${baseClasses}">
+        <div class="absolute inset-0 rounded-full opacity-80 ${innerColorClasses}"></div>
+        <span class="relative z-10 font-bold text-lg md:text-xl">${circleNumber}</span>
       </div>
     `,
         iconSize: [48, 48],
@@ -48,7 +54,12 @@ const activityColors = {
     'Sin actividad': 'bg-gray-400'
 };
 
-const ALLOWED_MARKERS = ['1', '2', '3', '4', '5', '9', '11', '14', '15', '17', '18'];
+// Remove '13' from the map entirely
+const mapMarkers = Array.from({ length: 18 }, (_, i) => String(i + 1)).filter(n => n !== '13');
+const ALLOWED_MARKERS = mapMarkers;
+
+// Círculos que solo están en el mapa (no plantados/inactivos en la gestión)
+const UNPLANTED_CIRCLES = ['6', '7', '8', '10', '12', '16'];
 
 const DraggableMarker = ({ circulo, isEditMode, updatePosition }) => {
     const [position, setPosition] = useState(circulo.position || DEFAULT_CENTER);
@@ -77,14 +88,15 @@ const DraggableMarker = ({ circulo, isEditMode, updatePosition }) => {
     }, [circulo.position]);
 
     const currentStatus = circulo.status || 'Normal';
-    const currentActivity = circulo.activity || 'Sin actividad';
+    const isUnplanted = UNPLANTED_CIRCLES.includes(String(circulo.name));
+    const currentActivity = isUnplanted ? 'No plantado' : (circulo.activity || 'Sin actividad');
 
     // Decide what color to show. Status Alert overrides Activity color
     const colorClass = (currentStatus !== 'Normal' && currentStatus !== '')
         ? statusColors[currentStatus] || statusColors['Normal']
-        : activityColors[currentActivity] || activityColors['Sin actividad'];
+        : activityColors[currentActivity] || (isUnplanted ? 'bg-transparent' : activityColors['Sin actividad']);
 
-    const icon = createCircleIcon(circulo.name, colorClass);
+    const icon = createCircleIcon(circulo.name, colorClass, isUnplanted);
 
     return (
         <Marker
@@ -98,8 +110,8 @@ const DraggableMarker = ({ circulo, isEditMode, updatePosition }) => {
             <Popup className="custom-popup">
                 <div className="p-1 min-w-[200px]">
                     <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">
-                        <div className={`w-3 h-3 rounded-full ${colorClass}`}></div>
-                        <h3 className="font-bold text-lg text-gray-800 m-0 leading-none">Círculo {circulo.name}</h3>
+                        <div className={`w-3 h-3 rounded-full ${isUnplanted ? 'bg-campo-beige-400' : colorClass}`}></div>
+                        <h3 className="font-bold text-lg text-gray-800 m-0 leading-none">Círculo {circulo.name} {isUnplanted ? '(No Plantado)' : ''}</h3>
                     </div>
 
                     <div className="space-y-1.5 text-sm mt-3">
@@ -159,43 +171,52 @@ const Mapa = () => {
 
             snapshot.forEach(doc => {
                 const c = doc.data();
-                if (!c.deleted) {
-                    // Extraer solo el número inicial del nombre (ej: "17 sur" -> "17", "15(1)" -> "15")
-                    const match = doc.id.match(/^(\d+)/);
-                    if (!match) return; // Ignorar si no empieza con número
-                    const mainNumber = match[1];
 
-                    // Filtrar solo los números principales solicitados
-                    if (!ALLOWED_MARKERS.includes(mainNumber)) return;
+                // Extraer solo el número inicial del nombre (ej: "17 sur" -> "17", "15(1)" -> "15")
+                const match = doc.id.match(/^(\d+)/);
+                if (!match) return; // Ignorar si no empieza con número
+                const mainNumber = match[1];
 
-                    // Decode current status/activity
-                    let currentStatus = '';
-                    if (c.statusHistory && c.statusHistory.length > 0) {
-                        currentStatus = c.statusHistory[c.statusHistory.length - 1].status;
-                    }
+                // Filtrar solo los números principales solicitados
+                if (!ALLOWED_MARKERS.includes(mainNumber)) return;
 
-                    let currentActivity = '';
-                    if (c.history && c.history.length > 0) {
-                        currentActivity = c.history[c.history.length - 1].activity;
-                    }
+                if (!groups[mainNumber]) {
+                    // Solo procesar si es uno de los marcadores solicitados
+                    return;
+                }
 
-                    if (!groups[mainNumber]) {
-                        // Solo procesar si es uno de los marcadores solicitados
-                        return;
-                    }
+                const group = groups[mainNumber];
 
-                    const group = groups[mainNumber];
-                    group.originalNames.push(doc.id);
-                    group.hectares += (parseFloat(c.hectares) || 0);
-
+                if (c.deleted) {
+                    // Si el lote principal o sublote está borrado, igual usamos su posición si existe
+                    // para no perder su ubicación en el mapa.
                     if (c.lat && c.lng && !group.position) {
                         group.position = [c.lat, c.lng];
-                        if (!validCenter) validCenter = group.position;
                     }
-
-                    if (currentStatus && currentStatus !== 'Normal') group.statuses.add(currentStatus);
-                    if (currentActivity && currentActivity !== 'Sin actividad') group.activities.add(currentActivity);
+                    return; // No sumar hectáreas ni actividades de círculos borrados
                 }
+
+                // Decode current status/activity
+                let currentStatus = '';
+                if (c.statusHistory && c.statusHistory.length > 0) {
+                    currentStatus = c.statusHistory[c.statusHistory.length - 1].status;
+                }
+
+                let currentActivity = '';
+                if (c.history && c.history.length > 0) {
+                    currentActivity = c.history[c.history.length - 1].activity;
+                }
+
+                group.originalNames.push(doc.id);
+                group.hectares += (parseFloat(c.hectares) || 0);
+
+                if (c.lat && c.lng && !group.position) {
+                    group.position = [c.lat, c.lng];
+                    if (!validCenter) validCenter = group.position;
+                }
+
+                if (currentStatus && currentStatus !== 'Normal') group.statuses.add(currentStatus);
+                if (currentActivity && currentActivity !== 'Sin actividad') group.activities.add(currentActivity);
             });
 
             const processedData = Object.values(groups).map((group) => {
@@ -213,8 +234,10 @@ const Mapa = () => {
 
                 let pos = group.position;
                 if (!pos) {
-                    const latOffset = (Math.random() - 0.5) * 0.02;
-                    const lngOffset = (Math.random() - 0.5) * 0.02;
+                    // Posición predeterminada determinista para que no "salten" en cada actualización
+                    const num = parseInt(group.name) || 0;
+                    const latOffset = Math.sin(num * Math.PI / 4) * 0.02; // Distribución en círculo
+                    const lngOffset = Math.cos(num * Math.PI / 4) * 0.02;
                     pos = [DEFAULT_CENTER[0] + latOffset, DEFAULT_CENTER[1] + lngOffset];
                 }
 
@@ -349,6 +372,10 @@ const Mapa = () => {
                         <div className="flex items-center gap-2.5">
                             <div className={`w-3.5 h-3.5 rounded-full ${activityColors['Corte']}`}></div>
                             <span className="text-xs font-medium text-gray-700">En Tareas (Rastrillado, Fardo)</span>
+                        </div>
+                        <div className="flex items-center gap-2.5 pt-1 border-t border-gray-100 mt-1">
+                            <div className={`w-3.5 h-3.5 rounded-full border-2 border-dashed border-campo-beige-400 bg-campo-beige-100`}></div>
+                            <span className="text-xs font-medium text-campo-beige-600">No Plantado (Solo Referencia)</span>
                         </div>
                     </div>
                 </div>

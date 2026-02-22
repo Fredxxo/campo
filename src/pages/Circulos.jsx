@@ -104,7 +104,19 @@ const Circulos = () => {
                 return a.name.localeCompare(b.name);
             });
 
-            setCirculosList(sortedList);
+            const filteredList = sortedList.filter(circle => {
+                const match = circle.name.match(/^(\d+)/);
+                if (match) {
+                    const num = parseInt(match[1]);
+                    // Ocultar 6, 7, 8, 10, 12, 13, 16
+                    if ([6, 7, 8, 10, 12, 13, 16].includes(num)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            setCirculosList(filteredList);
 
         }, (error) => {
             console.error("Error fetching circles:", error);
