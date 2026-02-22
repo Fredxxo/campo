@@ -3,7 +3,7 @@ import { Button } from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
 import { Plus, Wrench, Calendar, Trash2, X, CheckCircle, Clock, MapPin, User, Timer, AlertCircle, PlayCircle, StopCircle } from 'lucide-react';
 import { db } from '../firebase'; // Ensure this path is correct based on your project structure
-import { collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
 
 const Taller = () => {
     const [maintenanceItems, setMaintenanceItems] = useState([]);
@@ -71,7 +71,7 @@ const Taller = () => {
     }, []);
 
     const categories = [
-        "Traktor",
+        "Tractor",
         "Segadora",
         "Rastrillo",
         "Megaenfardadora",
@@ -84,12 +84,55 @@ const Taller = () => {
         if (!newItem.description || !newItem.category) return;
 
         try {
-            await addDoc(collection(db, "taller"), {
+            const docRef = await addDoc(collection(db, "taller"), {
                 ...newItem,
                 createdAt: new Date().toISOString(),
                 startedAt: null,
                 completedAt: null
             });
+
+            // Pause circle activity logic
+            if (circles.includes(newItem.sector)) {
+                const circleRef = doc(db, "circles", newItem.sector);
+                const circleSnap = await getDoc(circleRef);
+
+                if (circleSnap.exists()) {
+                    const circleData = circleSnap.data();
+                    const history = circleData.history || [];
+
+                    if (history.length > 0) {
+                        const lastItem = history[history.length - 1];
+
+                        // If it's active, pause it
+                        if (lastItem.situation === 'En Proceso' || lastItem.situation === 'Iniciado') {
+                            const now = new Date().toISOString();
+                            const updatedHistory = [...history];
+
+                            // Close current
+                            updatedHistory[updatedHistory.length - 1] = {
+                                ...lastItem,
+                                endDate: now
+                            };
+
+                            // Add new paused entry
+                            updatedHistory.push({
+                                id: Date.now(),
+                                activity: lastItem.activity,
+                                situation: 'Frenado',
+                                alert: lastItem.alert,
+                                machinery: lastItem.machinery, // keeping the machinery assigned
+                                startDate: now,
+                                endDate: null,
+                                pauseReason: `Rotura de maquinaria en Taller. ${newItem.description}`,
+                                tallerItemId: docRef.id
+                            });
+
+                            await updateDoc(circleRef, { history: updatedHistory });
+                        }
+                    }
+                }
+            }
+
             setIsModalOpen(false);
             setNewItem({
                 description: '',
@@ -106,9 +149,55 @@ const Taller = () => {
         }
     };
 
-    const handleDeleteItem = async (id) => {
+    const handleDeleteItem = async (itemOrId) => {
         if (window.confirm('¿Estás seguro de eliminar esta entrada?')) {
-            await deleteDoc(doc(db, "taller", id));
+            try {
+                const itemId = typeof itemOrId === 'string' ? itemOrId : itemOrId.id;
+                const item = typeof itemOrId === 'string' ? maintenanceItems.find(i => i.id === itemOrId) : itemOrId;
+
+                // Si el ticket detuvo un círculo, lo reanudamos antes de borrar el ticket
+                if (item && item.sector && circles.includes(item.sector)) {
+                    const circleRef = doc(db, "circles", item.sector);
+                    const circleSnap = await getDoc(circleRef);
+
+                    if (circleSnap.exists()) {
+                        const circleData = circleSnap.data();
+                        const history = circleData.history || [];
+
+                        if (history.length > 0) {
+                            const lastItem = history[history.length - 1];
+                            if (lastItem.situation === 'Frenado' && lastItem.tallerItemId === itemId) {
+                                const resumeNow = new Date().toISOString();
+                                const updatedHistory = [...history];
+
+                                updatedHistory[updatedHistory.length - 1] = {
+                                    ...lastItem,
+                                    endDate: resumeNow
+                                };
+
+                                updatedHistory.push({
+                                    id: Date.now(),
+                                    activity: lastItem.activity,
+                                    situation: 'En Proceso',
+                                    alert: lastItem.alert,
+                                    machinery: lastItem.machinery,
+                                    startDate: resumeNow,
+                                    endDate: null,
+                                    pauseReason: null,
+                                    tallerItemId: null
+                                });
+
+                                await updateDoc(circleRef, { history: updatedHistory });
+                            }
+                        }
+                    }
+                }
+                // Borrar el documento de taller
+                await deleteDoc(doc(db, "taller", itemId));
+            } catch (error) {
+                console.error("Error al eliminar de Taller: ", error);
+                alert("Hubo un error al eliminar el ticket: " + error.message);
+            }
         }
     };
 
@@ -120,6 +209,48 @@ const Taller = () => {
             updates.startedAt = now;
         } else if (newStatus === 'Finalizado' && !item.completedAt) {
             updates.completedAt = now;
+
+            // Resume circle activity logic
+            if (circles.includes(item.sector)) {
+                const circleRef = doc(db, "circles", item.sector);
+                const circleSnap = await getDoc(circleRef);
+
+                if (circleSnap.exists()) {
+                    const circleData = circleSnap.data();
+                    const history = circleData.history || [];
+
+                    if (history.length > 0) {
+                        const lastItem = history[history.length - 1];
+
+                        // Check if it's currently paused by this very ticket
+                        if (lastItem.situation === 'Frenado' && lastItem.tallerItemId === item.id) {
+                            const resumeNow = new Date().toISOString();
+                            const updatedHistory = [...history];
+
+                            // Close the paused entry
+                            updatedHistory[updatedHistory.length - 1] = {
+                                ...lastItem,
+                                endDate: resumeNow
+                            };
+
+                            // Add new active entry
+                            updatedHistory.push({
+                                id: Date.now(),
+                                activity: lastItem.activity,
+                                situation: 'En Proceso', // resume as 'En Proceso'
+                                alert: lastItem.alert,
+                                machinery: lastItem.machinery,
+                                startDate: resumeNow,
+                                endDate: null,
+                                pauseReason: null,
+                                tallerItemId: null
+                            });
+
+                            await updateDoc(circleRef, { history: updatedHistory });
+                        }
+                    }
+                }
+            }
         }
 
         // Optional: If moving back to previous states, you might want to clear timestamps
@@ -187,8 +318,9 @@ const Taller = () => {
                                         </select>
                                     </div>
                                     <button
-                                        onClick={() => handleDeleteItem(item.id)}
-                                        className="text-campo-beige-400 hover:text-red-500 transition-colors p-1"
+                                        onClick={() => handleDeleteItem(item)}
+                                        title="Eliminar registro"
+                                        className="text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors p-2 flex items-center justify-center"
                                     >
                                         <Trash2 className="h-5 w-5" />
                                     </button>

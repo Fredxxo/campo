@@ -228,6 +228,8 @@ const Circulos = () => {
             quantity: changes.quantity || currentItem.quantity || null,
             weight: changes.weight || currentItem.weight || null,
             quality: changes.quality || currentItem.quality || null,
+            pauseReason: changes.situation === 'Frenado' ? (changes.pauseReason || currentItem.pauseReason) : null,
+            tallerItemId: changes.situation === 'Frenado' ? (changes.tallerItemId || currentItem.tallerItemId) : null,
             startDate: now,
             endDate: null
         });
@@ -437,6 +439,7 @@ const Circulos = () => {
     };
 
     const getSituationBadgeColor = (situation) => {
+        if (situation === 'Frenado') return 'text-red-700 bg-red-100 border-red-200';
         return 'text-campo-carbon-600 bg-campo-beige-200 border-campo-beige-300';
     };
 
@@ -531,6 +534,14 @@ const Circulos = () => {
                                     </div>
                                 )}
 
+                                {/* Pause Reason Alert */}
+                                {currentState.situation === 'Frenado' && currentState.pauseReason && (
+                                    <div className="mt-2 flex items-start gap-2 bg-red-50 text-red-700 border border-red-200 rounded-lg px-3 py-1.5">
+                                        <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                                        <span className="text-xs font-medium leading-tight">{currentState.pauseReason}</span>
+                                    </div>
+                                )}
+
                                 <div className="mt-4 flex items-center justify-between">
                                     <Button
                                         variant="ghost"
@@ -594,6 +605,7 @@ const Circulos = () => {
                                         >
                                             <option value="Iniciado">Iniciado</option>
                                             <option value="En Proceso">En Proceso</option>
+                                            <option value="Frenado">Frenado</option>
                                             <option value="Finalizado">Finalizado</option>
                                         </select>
                                     </div>
